@@ -53,11 +53,24 @@ class JobListingController extends Controller
             $listingChanged = ($workflow->last_reviewed_content_hash !== $job->content_hash);
         }
 
+        $application = $job->application;
+
         $data['is_match_stale'] = $isMatchStale;
         $data['listing_changed_since_review'] = $listingChanged;
         $data['effective_review_status'] = $workflow?->review_status ?? $job->review_status ?? 'new';
         $data['is_bookmarked'] = (bool) ($workflow?->is_bookmarked ?? false);
         $data['workflow'] = $workflow ? $workflow->toArray() : null;
+        $data['application'] = $application ? [
+            'id' => $application->id,
+            'status' => $application->status,
+            'attempt_count' => $application->attempt_count,
+            'max_retries' => $application->max_retries,
+            'next_retry_at' => $application->next_retry_at,
+            'last_error_code' => $application->last_error_code,
+            'last_error_message' => $application->last_error_message,
+            'ready_at' => $application->ready_at,
+            'submitted_at' => $application->submitted_at,
+        ] : null;
 
         return $data;
     }
@@ -377,7 +390,7 @@ class JobListingController extends Controller
 
         $perPage = min(max((int) $request->input('per_page', 20), 1), 100);
 
-        $jobs = $query->with(['latestMatch', 'workflow'])
+        $jobs = $query->with(['latestMatch', 'workflow', 'application'])
             ->paginate($perPage);
 
         $profileUpdatedAt = $profile?->updated_at;
@@ -409,7 +422,7 @@ class JobListingController extends Controller
         $job = JobListing::where('user_id', $user->id)
             ->with(['histories' => function ($q) {
                 $q->orderBy('created_at', 'desc');
-            }, 'latestMatch', 'workflow'])
+            }, 'latestMatch', 'workflow', 'application'])
             ->find($id);
 
         if (!$job) {
@@ -513,7 +526,7 @@ class JobListingController extends Controller
 
         $existing = $service->findExistingRecord($user->id, $platform, $sourceJobId, $canonicalUrl, '');
         if ($existing) {
-            $existing->load(['latestMatch', 'workflow']);
+            $existing->load(['latestMatch', 'workflow', 'application']);
             $profile = $user->candidateProfile;
             $enriched = $this->enrichJob($existing, $profile?->updated_at);
         } else {

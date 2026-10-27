@@ -80,4 +80,14 @@ class JobListing extends Model
     {
         return $this->hasOne(JobUserWorkflow::class, 'job_listing_id');
     }
+
+    public function application(): HasOne
+    {
+        return $this->hasOne(JobApplication::class, 'job_listing_id');
+    }
+
+    public function applications(): HasMany
+    {
+        return $this->hasMany(JobApplication::class, 'job_listing_id');
+    }
 }

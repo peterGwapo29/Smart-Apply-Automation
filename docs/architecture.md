@@ -292,3 +292,53 @@ erDiagram
 ### Staleness & Change Detection Mechanism
 - **Content Change Detection:** When a review decision is recorded, `last_reviewed_content_hash` snapshots the current listing `content_hash`. If an employer subsequently modifies the listing title, responsibilities, or requirements, `job_listings.content_hash !== workflow.last_reviewed_content_hash` triggers an amber `listing_changed_since_review: true` warning banner.
 - **Match Staleness Detection:** Evaluated dynamically when `job_matches.calculated_at < job_listings.updated_at` or `job_matches.calculated_at < candidate_profiles.updated_at`. Flags the score as outdated and surfaces a one-click recalculation action without overwriting history.
+
+---
+
+## 6. Application Agent Workflow Engine (Phase 6)
+
+### State Machine Lifecycle & Transitions
+The workflow engine manages candidate job applications through an explicit, validated lifecycle:
+
+```mermaid
+stateDiagram-v2
+    [*] --> queued: Enqueue Application
+    queued --> preparing: Worker Claims Task
+    queued --> needs_review: Missing Profile Info
+    queued --> failed: Hard Disqualification
+
+    preparing --> ready: Preparation Complete
+    preparing --> needs_review: Custom Employer Questions / Verification
+    preparing --> queued: Transient Error (Bounded Retry Scheduled)
+    preparing --> failed: Max Retries Exceeded / Fatal Error
+    preparing --> confirmation_required: Timeout / Outcome Ambiguous
+
+    needs_review --> queued: Information Supplied
+    needs_review --> ready: Candidate Approves Review
+
+    ready --> queued: Workflow Rerun Requested
+    ready --> submitted: Verified Confirmation Received
+    ready --> confirmation_required: Outcome Ambiguous
+
+    confirmation_required --> submitted: Verified Submission Confirmed
+    confirmation_required --> ready: Evidence Confirms Not Submitted
+    confirmation_required --> failed: Terminal Failure Confirmed
+
+    submitted --> [*]
+    failed --> queued: Explicit Manual Retry
+```
+
+### Core Architecture Components
+1. **Application Record (`job_applications`):**
+   - Unique composite index on `[user_id, job_listing_id]` strictly guarantees at most one application record per candidate/job pair.
+   - Idempotency key tracking (`idempotency_key`) prevents duplicate actions upon repeated client requests.
+   - Processing attempt counts (`attempt_count`), retry limits (`max_retries`), and next retry timestamps (`next_retry_at`).
+   - Sanitized error codes and error messages.
+2. **Append-Only Activity History (`job_application_activities`):**
+   - Persistent audit log tracking every status transition, event type, prior status, new status, actor (`user`, `agent:worker`, `system:recovery`), and timestamp.
+3. **Task Records (`job_application_tasks`):**
+   - Fine-grained unit-of-work tracking supporting atomic worker claiming and payload persistence.
+4. **Resilience & Recoverability:**
+   - **Bounded Exponential Backoff:** $\text{delay} = \min(30s \times 2^{\text{attempt}-1}, 900s)$.
+   - **Stuck Task Recovery:** Scans for applications stalled in `preparing` status for $> 15$ minutes and safely returns them to `queued` (or marks `failed` if retries exhausted).
+   - **Terminal Immutability:** Terminal `submitted` state is strictly immutable and cannot be silently rolled back.

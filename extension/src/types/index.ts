@@ -29,6 +29,12 @@ export interface JobCheckResponse {
       is_bookmarked: boolean;
       notes: string | null;
     } | null;
+    application?: {
+      id: number;
+      status: string;
+      attempt_count: number;
+      max_retries: number;
+    } | null;
     latest_match?: {
       overall_score: number | string;
       eligibility_status: 'eligible' | 'disqualified' | 'requires_review';

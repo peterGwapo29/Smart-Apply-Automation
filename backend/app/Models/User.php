@@ -71,4 +71,9 @@ class User extends Authenticatable
     {
         return $this->hasMany(JobUserWorkflow::class);
     }
+
+    public function jobApplications(): HasMany
+    {
+        return $this->hasMany(JobApplication::class);
+    }
 }

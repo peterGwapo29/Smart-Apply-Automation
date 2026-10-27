@@ -163,12 +163,31 @@ export const App: React.FC = () => {
     );
   };
 
+  const renderApplicationBadge = (status?: string) => {
+    if (!status) return null;
+    let badgeClass = 'badge-slate';
+    let label = `App: ${status.replace('_', ' ')}`;
+    if (status === 'ready') {
+      badgeClass = 'badge-emerald';
+      label = '✓ Materials Ready';
+    }
+    if (status === 'queued' || status === 'preparing') badgeClass = 'badge-slate';
+    if (status === 'needs_review') badgeClass = 'badge-amber';
+    if (status === 'failed') badgeClass = 'badge-rose';
+    if (status === 'submitted') badgeClass = 'badge-emerald';
+    return (
+      <span className={`badge-tag ${badgeClass}`}>
+        {label}
+      </span>
+    );
+  };
+
   return (
     <div className="popup-container">
       <div className="popup-header">
         <div>
           <h1 className="popup-title">JobStreet Quick Apply</h1>
-          <span className="popup-badge">Manifest V3 • Phase 5</span>
+          <span className="popup-badge">Manifest V3 • Phase 7</span>
         </div>
       </div>
 
@@ -229,10 +248,12 @@ export const App: React.FC = () => {
                     {listingMatch.job.latest_match ? (
                       <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
                         {renderMatchBadge(listingMatch.job.latest_match)}
+                        {renderApplicationBadge(listingMatch.job.application?.status)}
                       </div>
                     ) : (
-                      <div style={{ color: '#2563eb', marginTop: 4, fontWeight: 500 }}>
-                        ✓ Saved (Match score ready to calculate)
+                      <div style={{ color: '#2563eb', marginTop: 4, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span>✓ Saved (Match score ready to calculate)</span>
+                        {renderApplicationBadge(listingMatch.job.application?.status)}
                       </div>
                     )}
 
@@ -303,7 +324,7 @@ export const App: React.FC = () => {
                 className="action-button"
                 onClick={() => handleOpenDashboardDetail(listingMatch.job!.id)}
               >
-                View Match Breakdown in Dashboard
+                {listingMatch.job.application ? 'Open Application Workspace' : 'View Match Breakdown'}
               </button>
               <button
                 className="secondary-button"
@@ -377,7 +398,7 @@ export const App: React.FC = () => {
       )}
 
       <div className="popup-footer">
-        JobStreet Quick Apply Automation • Phase 5
+        JobStreet Quick Apply Automation • Phase 7
       </div>
     </div>
   );

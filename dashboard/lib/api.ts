@@ -457,6 +457,7 @@ export interface JobListingRecord {
   updated_at: string;
   histories?: JobListingHistoryRecord[];
   latest_match?: JobMatchRecord | null;
+  application?: JobApplicationRecord | null;
 }
 
 export interface ImportJobPayload {
@@ -848,4 +849,457 @@ export async function calculateAllJobMatches(): Promise<{
   }
 
   return data.data;
+}
+
+
+// ---------------------------------------------------------
+// Phase 6: Application Workflow Types & Endpoints
+// ---------------------------------------------------------
+
+export type ApplicationStatus =
+  | 'queued'
+  | 'preparing'
+  | 'needs_review'
+  | 'ready'
+  | 'submitted'
+  | 'failed'
+  | 'confirmation_required';
+
+export interface JobApplicationActivityRecord {
+  id: number;
+  job_application_id: number;
+  event_type: string;
+  from_status?: ApplicationStatus | null;
+  to_status?: ApplicationStatus | null;
+  message: string;
+  metadata?: Record<string, unknown> | null;
+  actor: string;
+  created_at: string;
+}
+
+export interface JobApplicationRecord {
+  id: number;
+  user_id: number;
+  candidate_profile_id: number;
+  job_listing_id: number;
+  status: ApplicationStatus;
+  idempotency_key?: string | null;
+  attempt_count: number;
+  max_retries: number;
+  next_retry_at?: string | null;
+  last_error_code?: string | null;
+  last_error_message?: string | null;
+  last_processed_at?: string | null;
+  preparation_started_at?: string | null;
+  ready_at?: string | null;
+  submitted_at?: string | null;
+  metadata?: Record<string, unknown> | null;
+  job_listing?: JobListingRecord;
+  candidate_profile?: CandidateProfileData;
+  activities?: JobApplicationActivityRecord[] | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function createApplication(jobListingId: number): Promise<{
+  success: boolean;
+  application: JobApplicationRecord;
+  created: boolean;
+}> {
+  const baseUrl = getApiBaseUrl();
+  const response = await fetch(`${baseUrl}/applications`, {
+    method: 'POST',
+    headers: getHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ job_listing_id: jobListingId }),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to create application.');
+  }
+
+  return data;
+}
+
+export async function getApplication(id: number): Promise<JobApplicationRecord> {
+  const baseUrl = getApiBaseUrl();
+  const response = await fetch(`${baseUrl}/applications/${id}`, {
+    method: 'GET',
+    headers: getHeaders(),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to fetch application.');
+  }
+
+  return data.application;
+}
+
+export async function listApplications(params?: {
+  status?: ApplicationStatus | string;
+  page?: number;
+}): Promise<{
+  data: JobApplicationRecord[];
+  meta: {
+    current_page: number;
+    last_page: number;
+    per_page: number;
+    total: number;
+  };
+}> {
+  const baseUrl = getApiBaseUrl();
+  const query = new URLSearchParams();
+  if (params?.status) query.append('status', params.status);
+  if (params?.page) query.append('page', params.page.toString());
+
+  const response = await fetch(`${baseUrl}/applications${query.toString() ? '?' + query.toString() : ''}`, {
+    method: 'GET',
+    headers: getHeaders(),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to list applications.');
+  }
+
+  return data;
+}
+
+export async function queueApplication(id: number): Promise<JobApplicationRecord> {
+  const baseUrl = getApiBaseUrl();
+  const response = await fetch(`${baseUrl}/applications/${id}/queue`, {
+    method: 'POST',
+    headers: getHeaders(),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to queue application.');
+  }
+
+  return data.application;
+}
+
+export async function retryApplication(id: number): Promise<JobApplicationRecord> {
+  const baseUrl = getApiBaseUrl();
+  const response = await fetch(`${baseUrl}/applications/${id}/retry`, {
+    method: 'POST',
+    headers: getHeaders(),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to retry application.');
+  }
+
+  return data.application;
+}
+
+export async function transitionApplication(
+  id: number,
+  payload: {
+    to_status: ApplicationStatus;
+    message?: string;
+    notes?: string;
+    metadata?: Record<string, unknown>;
+  }
+): Promise<JobApplicationRecord> {
+  const baseUrl = getApiBaseUrl();
+  const response = await fetch(`${baseUrl}/applications/${id}/transition`, {
+    method: 'POST',
+    headers: getHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to transition application status.');
+  }
+
+  return data.application;
+}
+
+export async function getApplicationActivities(
+  id: number,
+  page?: number
+): Promise<{
+  data: JobApplicationActivityRecord[];
+  meta: {
+    current_page: number;
+    last_page: number;
+    per_page: number;
+    total: number;
+  };
+}> {
+  const baseUrl = getApiBaseUrl();
+  const query = new URLSearchParams();
+  if (page) query.append('page', page.toString());
+
+  const response = await fetch(`${baseUrl}/applications/${id}/activity${query.toString() ? '?' + query.toString() : ''}`, {
+    method: 'GET',
+    headers: getHeaders(),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to fetch application activity history.');
+  }
+
+  return data;
+}
+
+// ---------------------------------------------------------
+// Phase 7: AI Application Preparation Interfaces & Client
+// ---------------------------------------------------------
+
+export interface JobApplicationMaterialRecord {
+  id: number;
+  job_application_id: number;
+  selected_resume_id?: number | null;
+  resume_selection_rationale?: string | null;
+  cover_letter?: string | null;
+  cover_letter_metadata?: {
+    provider?: string;
+    verified_years?: number;
+    referenced_experiences?: number[];
+    referenced_projects?: number[];
+    referenced_skills?: number[];
+    word_count?: number;
+  } | null;
+  introduction?: string | null;
+  version: number;
+  is_candidate_edited: boolean;
+  selected_resume?: {
+    id: number;
+    original_filename: string;
+    is_active: boolean;
+  } | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface JobApplicationAnswerRecord {
+  id: number;
+  job_application_id: number;
+  question: string;
+  category: 'years_experience' | 'technology_tenure' | 'work_authorization' | 'salary_expectation' | 'availability' | 'yes_no' | 'general_qualification';
+  draft_answer?: string | null;
+  confidence: 'high' | 'medium' | 'low' | 'unknown';
+  requires_review: boolean;
+  review_reason?: string | null;
+  evidence_references?: Record<string, unknown> | null;
+  is_candidate_edited: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface BlockingIssueRecord {
+  code: string;
+  field: string;
+  message: string;
+  unresolved_question_ids?: number[];
+}
+
+export interface WarningRecord {
+  code: string;
+  field: string;
+  message: string;
+}
+
+export interface JobApplicationReadinessRecord {
+  id: number;
+  job_application_id: number;
+  is_ready: boolean;
+  blocking_issues?: BlockingIssueRecord[] | null;
+  warnings?: WarningRecord[] | null;
+  evaluated_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ApplicationWorkspaceResponse {
+  success: boolean;
+  application: JobApplicationRecord;
+  job: JobListingRecord;
+  evidence_summary: {
+    verified_professional_years: number;
+    recent_role?: {
+      job_title: string;
+      company_name: string;
+      months_duration: number;
+    } | null;
+    skills_count: number;
+    projects_count: number;
+    notice_period_weeks: number;
+  };
+  available_resumes: Array<{
+    id: number;
+    original_filename: string;
+    is_active: boolean;
+    created_at: string;
+  }>;
+  material?: JobApplicationMaterialRecord | null;
+  answers: JobApplicationAnswerRecord[];
+  readiness?: JobApplicationReadinessRecord | null;
+}
+
+export async function getApplicationWorkspace(id: number): Promise<ApplicationWorkspaceResponse> {
+  const baseUrl = getApiBaseUrl();
+  const response = await fetch(`${baseUrl}/applications/${id}/workspace`, {
+    method: 'GET',
+    headers: getHeaders(),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to fetch application preparation workspace.');
+  }
+
+  return data;
+}
+
+export async function recommendResume(id: number): Promise<{
+  recommended_resume: { id: number; original_filename: string; is_active: boolean } | null;
+  rationale: string;
+  all_candidates: Array<{ id: number; filename: string; is_active: boolean; score: number }>;
+}> {
+  const baseUrl = getApiBaseUrl();
+  const response = await fetch(`${baseUrl}/applications/${id}/recommend-resume`, {
+    method: 'POST',
+    headers: getHeaders(),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to recommend resume.');
+  }
+
+  return data.recommendation;
+}
+
+export async function selectResume(
+  id: number,
+  resumeId: number,
+  rationale?: string
+): Promise<{
+  material: JobApplicationMaterialRecord;
+  readiness: JobApplicationReadinessRecord;
+}> {
+  const baseUrl = getApiBaseUrl();
+  const response = await fetch(`${baseUrl}/applications/${id}/select-resume`, {
+    method: 'POST',
+    headers: getHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ resume_id: resumeId, rationale }),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to select resume.');
+  }
+
+  return data;
+}
+
+export async function generateApplicationMaterials(id: number): Promise<{
+  material: JobApplicationMaterialRecord;
+  readiness: JobApplicationReadinessRecord;
+}> {
+  const baseUrl = getApiBaseUrl();
+  const response = await fetch(`${baseUrl}/applications/${id}/generate-materials`, {
+    method: 'POST',
+    headers: getHeaders(),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to generate application materials.');
+  }
+
+  return data;
+}
+
+export async function updateApplicationMaterials(
+  id: number,
+  payload: { cover_letter?: string; introduction?: string }
+): Promise<{
+  material: JobApplicationMaterialRecord;
+  readiness: JobApplicationReadinessRecord;
+}> {
+  const baseUrl = getApiBaseUrl();
+  const response = await fetch(`${baseUrl}/applications/${id}/materials`, {
+    method: 'PUT',
+    headers: getHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to update application materials.');
+  }
+
+  return data;
+}
+
+export async function draftScreeningQuestions(
+  id: number,
+  questions: string[]
+): Promise<{
+  answers: JobApplicationAnswerRecord[];
+  readiness: JobApplicationReadinessRecord;
+}> {
+  const baseUrl = getApiBaseUrl();
+  const response = await fetch(`${baseUrl}/applications/${id}/screening-questions/draft`, {
+    method: 'POST',
+    headers: getHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ questions }),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to draft screening question answers.');
+  }
+
+  return data;
+}
+
+export async function updateScreeningQuestion(
+  id: number,
+  questionId: number,
+  payload: { draft_answer: string; requires_review?: boolean }
+): Promise<{
+  answer: JobApplicationAnswerRecord;
+  readiness: JobApplicationReadinessRecord;
+}> {
+  const baseUrl = getApiBaseUrl();
+  const response = await fetch(`${baseUrl}/applications/${id}/screening-questions/${questionId}`, {
+    method: 'PUT',
+    headers: getHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to update screening question answer.');
+  }
+
+  return data;
+}
+
+export async function evaluateApplicationReadiness(id: number): Promise<{
+  application: JobApplicationRecord;
+  readiness: JobApplicationReadinessRecord;
+}> {
+  const baseUrl = getApiBaseUrl();
+  const response = await fetch(`${baseUrl}/applications/${id}/readiness`, {
+    method: 'GET',
+    headers: getHeaders(),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to evaluate application readiness.');
+  }
+
+  return data;
 }

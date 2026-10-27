@@ -65,8 +65,18 @@ class CandidateProfile extends Model
         return $this->hasOne(CandidatePreference::class);
     }
 
+    public function preferences(): HasOne
+    {
+        return $this->hasOne(CandidatePreference::class);
+    }
+
     public function jobMatches(): HasMany
     {
         return $this->hasMany(JobMatch::class);
+    }
+
+    public function jobApplications(): HasMany
+    {
+        return $this->hasMany(JobApplication::class);
     }
 }

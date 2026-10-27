@@ -12,10 +12,12 @@ import {
   bookmarkJob,
   unbookmarkJob,
   updateJobReview,
+  createApplication,
   JobListingRecord,
   JobListingsResponse,
   DashboardSummary,
   ReviewWorkflowStatus,
+  ApplicationStatus,
 } from '@/lib/api';
 
 type TabKey = 'all' | 'strong_matches' | 'review_queue' | 'bookmarked' | 'interested' | 'archived';
@@ -280,6 +282,71 @@ function JobListingsContent() {
       return `${job.salary_currency || 'PHP'} ${Number(job.salary_min).toLocaleString()}+`;
     }
     return 'Not disclosed';
+  };
+
+  const [startingAppJobId, setStartingAppJobId] = useState<number | null>(null);
+
+  const handleStartApplication = async (jobId: number) => {
+    try {
+      setStartingAppJobId(jobId);
+      await createApplication(jobId);
+      await fetchJobs();
+      await fetchSummary();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to start application');
+    } finally {
+      setStartingAppJobId(null);
+    }
+  };
+
+  const getApplicationBadge = (status?: ApplicationStatus) => {
+    switch (status) {
+      case 'queued':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-100 text-purple-800 dark:bg-purple-950/70 dark:text-purple-300 border border-purple-300 dark:border-purple-800">
+            ⏳ App: Queued
+          </span>
+        );
+      case 'preparing':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 dark:bg-blue-950/70 dark:text-blue-300 border border-blue-300 dark:border-blue-800 animate-pulse">
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-600" />
+            App: Preparing
+          </span>
+        );
+      case 'needs_review':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+            ⚠ App: Review Needed
+          </span>
+        );
+      case 'ready':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+            ✓ App: Ready
+          </span>
+        );
+      case 'submitted':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-cyan-100 text-cyan-800 dark:bg-cyan-950/70 dark:text-cyan-300 border border-cyan-300 dark:border-cyan-800">
+            🎉 App: Submitted
+          </span>
+        );
+      case 'failed':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-100 text-rose-800 dark:bg-rose-950/70 dark:text-rose-400 border border-rose-300 dark:border-rose-800">
+            ✕ App: Failed
+          </span>
+        );
+      case 'confirmation_required':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-800 dark:bg-orange-950/70 dark:text-orange-300 border border-orange-300 dark:border-orange-800">
+            🔍 App: Verify
+          </span>
+        );
+      default:
+        return null;
+    }
   };
 
   return (
@@ -707,6 +774,9 @@ function JobListingsContent() {
                     {/* Quick Apply badge */}
                     {getQuickApplyBadge(job.quick_apply_status)}
 
+                    {/* Application Status Badge (Phase 6) */}
+                    {getApplicationBadge(job.application?.status)}
+
                     {/* Listing Changed Alert Badge */}
                     {job.listing_changed_since_review && (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
@@ -794,6 +864,23 @@ function JobListingsContent() {
                       <option value="archived">Archived</option>
                     </select>
                   </div>
+
+                  {job.application ? (
+                    <Link
+                      href={`/jobs/${job.id}#application`}
+                      className="px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 text-xs font-semibold border border-blue-200 dark:border-blue-800 transition-colors"
+                    >
+                      App Agent
+                    </Link>
+                  ) : (
+                    <button
+                      onClick={() => handleStartApplication(job.id)}
+                      disabled={startingAppJobId === job.id}
+                      className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition-colors disabled:opacity-50"
+                    >
+                      {startingAppJobId === job.id ? 'Starting...' : '+ Start App'}
+                    </button>
+                  )}
 
                   <Link
                     href={`/jobs/${job.id}`}

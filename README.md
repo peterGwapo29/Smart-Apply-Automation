@@ -50,6 +50,20 @@ This repository is structured as a modular monorepo containing three core applic
   - **Discovery Dashboard:** Quick View Tabs (`All Jobs`, `Strong Matches`, `Review Queue`, `Bookmarked`, `Interested`, `Archived`), 6 KPI summary counters (`/api/jobs/dashboard-summary`), composable multi-criteria search, technology keyword parsing, and stable server-side sorting (`newest`, `highest_match`, `lowest_match`, `salary_high`, `recently_reviewed`, `unreviewed_first`).
   - **Job Detail & Queue Workflow:** Sticky workflow action header in `/jobs/[id]` for triage decisions and notes, change comparison alerts, and stale match notices.
   - **Chrome Extension Integration:** Enhanced popup with review status badges, inline star bookmark toggle, triage selector, change/stale warnings, and direct routing to `/jobs?tab=review_queue`.
+- **Phase 6: Application Agent Foundation** (Verified)
+  - **Persistent Lifecycle Engine:** Implemented `job_applications`, `job_application_activities`, and `job_application_tasks` with a validated state machine (`queued`, `preparing`, `needs_review`, `ready`, `submitted`, `failed`, `confirmation_required`).
+  - **Strict Uniqueness & Idempotency:** Composite unique index on `[user_id, job_listing_id]` guarantees at most one application record per candidate/job pair. Supports `Idempotency-Key` headers for repeated client requests without duplication.
+  - **Resilience & Bounded Exponential Backoff:** Transient failure handling with automatic retry scheduling ($\min(30s \times 2^{\text{attempt}-1}, 900s)$), retry limits (max 3), and stuck task recovery for interrupted workers.
+  - **Append-Only Audit History:** Records all state transitions, triggering actors (`user`, `agent:worker`, `system:recovery`), and descriptive audit messages.
+  - **Dashboard Integration:** Application status badges on job cards, one-click "+ Start App" action, and prominent Application Agent Workflow Panel in `/jobs/[id]` with visual progression pipeline and audit timeline.
+  - **Chrome Extension Integration:** Active tab popup displays application lifecycle status, quick link to application workspace, and prevents redundant queue requests.
+- **Phase 7: AI Application Preparation** (Verified)
+  - **Evidence Grounding Engine:** `CandidateEvidenceService` extracts verified professional employment, skills, and preferences while strictly isolating practical/portfolio projects to prevent tenure inflation.
+  - **Résumé Version Selection:** `ResumeSelectionService` analyzes candidate resumes against job skills, recommending the optimal version with an explainable rationale and allowing manual candidate override.
+  - **Tailored Application Materials:** `CoverLetterService` and `LocalDeterministicAiProvider` generate job-specific tailored cover letters and concise introductions (100–150 words) with provenance links to verified background records.
+  - **Screening Questions Assistant:** `ScreeningQuestionService` parses questions across tenure, salary, availability, authorization, and yes/no. Missing evidence or legal commitments are flagged as `unknown` with mandatory review, preventing hallucination.
+  - **Deterministic Readiness Evaluator:** `ApplicationReadinessService` validates resume selection, cover letter completeness, screening answers, and contact info, transitioning applications to `ready` without auto-submitting.
+  - **Dashboard & Extension Integration:** Full interactive workspace in Next.js `/jobs/[id]` (materials editor, questions reviewer, resume selector, readiness checklist) and live readiness badges in Chrome Extension popup.
 
 ---
 

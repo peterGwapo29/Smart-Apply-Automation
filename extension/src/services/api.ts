@@ -65,3 +65,17 @@ export async function updateJobReview(jobId: number, reviewStatus: string): Prom
     throw new Error(`Failed to update review status (${response.status})`);
   }
 }
+
+export async function createApplication(jobId: number): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/applications`, {
+    method: 'POST',
+    headers: {
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ job_listing_id: jobId }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to initialize application (${response.status})`);
+  }
+}

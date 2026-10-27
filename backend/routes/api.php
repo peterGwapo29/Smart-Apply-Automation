@@ -3,6 +3,8 @@
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CandidateProfileController;
 use App\Http\Controllers\Api\HealthController;
+use App\Http\Controllers\Api\JobApplicationController;
+use App\Http\Controllers\Api\JobApplicationPreparationController;
 use App\Http\Controllers\Api\JobListingController;
 use App\Http\Controllers\Api\JobMatchingController;
 use App\Http\Controllers\Api\JobWorkflowController;
@@ -58,4 +60,24 @@ Route::delete('/jobs/{id}', [JobListingController::class, 'destroy']);
 Route::patch('/jobs/{id}/review', [JobWorkflowController::class, 'updateReview']);
 Route::post('/jobs/{id}/bookmark', [JobWorkflowController::class, 'bookmark']);
 Route::delete('/jobs/{id}/bookmark', [JobWorkflowController::class, 'unbookmark']);
+
+// Application Agent Foundation (Phase 6)
+Route::get('/applications', [JobApplicationController::class, 'index']);
+Route::post('/applications', [JobApplicationController::class, 'store']);
+Route::get('/applications/{id}', [JobApplicationController::class, 'show']);
+Route::post('/applications/{id}/queue', [JobApplicationController::class, 'queue']);
+Route::post('/applications/{id}/retry', [JobApplicationController::class, 'retry']);
+Route::post('/applications/{id}/transition', [JobApplicationController::class, 'transition']);
+Route::get('/applications/{id}/activity', [JobApplicationController::class, 'activity']);
+
+// AI Application Preparation (Phase 7)
+Route::get('/applications/{id}/workspace', [JobApplicationPreparationController::class, 'workspace']);
+Route::post('/applications/{id}/recommend-resume', [JobApplicationPreparationController::class, 'recommendResume']);
+Route::post('/applications/{id}/select-resume', [JobApplicationPreparationController::class, 'selectResume']);
+Route::post('/applications/{id}/generate-materials', [JobApplicationPreparationController::class, 'generateMaterials']);
+Route::put('/applications/{id}/materials', [JobApplicationPreparationController::class, 'updateMaterials']);
+Route::post('/applications/{id}/screening-questions/draft', [JobApplicationPreparationController::class, 'draftScreeningQuestions']);
+Route::put('/applications/{id}/screening-questions/{questionId}', [JobApplicationPreparationController::class, 'updateScreeningQuestion']);
+Route::get('/applications/{id}/readiness', [JobApplicationPreparationController::class, 'evaluateReadiness']);
+
 

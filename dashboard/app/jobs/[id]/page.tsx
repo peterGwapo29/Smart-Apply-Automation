@@ -12,10 +12,17 @@ import {
   bookmarkJob,
   unbookmarkJob,
   updateJobReview,
+  createApplication,
+  queueApplication,
+  retryApplication,
+  transitionApplication,
   JobListingRecord,
   JobMatchRecord,
+  JobApplicationRecord,
   ReviewWorkflowStatus,
+  ApplicationStatus,
 } from '@/lib/api';
+import ApplicationPreparationWorkspace from '@/components/ApplicationPreparationWorkspace';
 
 function JobDetailContent() {
   const params = useParams();
@@ -37,6 +44,11 @@ function JobDetailContent() {
   const [isBookmarked, setIsBookmarked] = useState(false);
   const [savingWorkflow, setSavingWorkflow] = useState(false);
   const [workflowNotice, setWorkflowNotice] = useState<string | null>(null);
+
+  // Application Agent states (Phase 6)
+  const [application, setApplication] = useState<JobApplicationRecord | null>(null);
+  const [appBusy, setAppBusy] = useState(false);
+  const [appNotice, setAppNotice] = useState<string | null>(null);
 
   // Form states for inline editing
   const [title, setTitle] = useState('');
@@ -71,6 +83,11 @@ function JobDetailContent() {
         } else {
           setWorkflowStatus((data.effective_review_status as ReviewWorkflowStatus) || 'new');
           setIsBookmarked(Boolean(data.is_bookmarked));
+        }
+
+        // Sync application agent state (Phase 6)
+        if (data.application) {
+          setApplication(data.application as JobApplicationRecord);
         }
 
         // Fetch or load latest match
@@ -178,6 +195,69 @@ function JobDetailContent() {
     }
   };
 
+  const handleCreateApp = async () => {
+    if (isNaN(jobId) || !job) return;
+    try {
+      setAppBusy(true);
+      const res = await createApplication(jobId);
+      setApplication(res.application);
+      setAppNotice(res.created ? 'Application initialized and queued.' : 'Existing application retrieved.');
+      setTimeout(() => setAppNotice(null), 3500);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to initialize application');
+    } finally {
+      setAppBusy(false);
+    }
+  };
+
+  const handleQueueApp = async () => {
+    if (!application) return;
+    try {
+      setAppBusy(true);
+      const updated = await queueApplication(application.id);
+      setApplication(updated);
+      setAppNotice('Application re-entered preparation queue.');
+      setTimeout(() => setAppNotice(null), 3500);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to queue application');
+    } finally {
+      setAppBusy(false);
+    }
+  };
+
+  const handleRetryApp = async () => {
+    if (!application) return;
+    try {
+      setAppBusy(true);
+      const updated = await retryApplication(application.id);
+      setApplication(updated);
+      setAppNotice('Application retry scheduled.');
+      setTimeout(() => setAppNotice(null), 3500);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to retry application');
+    } finally {
+      setAppBusy(false);
+    }
+  };
+
+  const handleTransitionApp = async (toStatus: ApplicationStatus, notes?: string) => {
+    if (!application) return;
+    try {
+      setAppBusy(true);
+      const updated = await transitionApplication(application.id, {
+        to_status: toStatus,
+        notes,
+      });
+      setApplication(updated);
+      setAppNotice(`Application status transitioned to ${toStatus.replace('_', ' ')}.`);
+      setTimeout(() => setAppNotice(null), 3500);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Status transition rejected');
+    } finally {
+      setAppBusy(false);
+    }
+  };
+
   const handleDelete = async () => {
     if (isNaN(jobId)) return;
     if (!confirm('Are you sure you want to permanently delete this job listing?')) return;
@@ -253,6 +333,11 @@ function JobDetailContent() {
       </div>
 
       {/* Notifications */}
+      {appNotice && (
+        <div className="p-4 rounded-xl bg-purple-50 text-purple-800 dark:bg-purple-950/40 dark:text-purple-300 border border-purple-200 dark:border-purple-800 text-sm font-medium">
+          {appNotice}
+        </div>
+      )}
       {workflowNotice && (
         <div className="p-4 rounded-xl bg-blue-50 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200 dark:border-blue-800 text-sm">
           {workflowNotice}
@@ -460,7 +545,296 @@ function JobDetailContent() {
         </div>
       </div>
 
-      {/* PHASE 4: Match Analysis & Explainability Section */}
+      {/* PHASE 6: Application Agent Foundation */}
+      <div id="application" className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+                Application Agent Workflow Engine
+              </h2>
+              <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-purple-50 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300">
+                Phase 6 Foundation
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Persistent, trackable application lifecycle connecting match analysis to future AI preparation and browser automation.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {!application ? (
+              <button
+                onClick={handleCreateApp}
+                disabled={appBusy}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-sm transition-colors disabled:opacity-50"
+              >
+                {appBusy ? 'Initializing...' : '⚡ Initialize Application'}
+              </button>
+            ) : (
+              <div className="flex items-center gap-2">
+                {['failed', 'confirmation_required', 'preparing'].includes(application.status) && (
+                  <button
+                    onClick={handleRetryApp}
+                    disabled={appBusy}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold shadow-sm transition-colors disabled:opacity-50"
+                  >
+                    {appBusy ? 'Retrying...' : '🔄 Retry Task'}
+                  </button>
+                )}
+                {application.status !== 'queued' && application.status !== 'submitted' && (
+                  <button
+                    onClick={handleQueueApp}
+                    disabled={appBusy}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-semibold transition-colors disabled:opacity-50"
+                  >
+                    {appBusy ? 'Queuing...' : 'Re-queue'}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {application ? (
+          <div className="space-y-6">
+            {/* Visual Lifecycle Progress Bar */}
+            <div className="bg-slate-50 dark:bg-slate-850 p-4 rounded-xl border border-slate-200/80 dark:border-slate-800">
+              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
+                Lifecycle State Machine Progress
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center text-xs">
+                <div
+                  className={`p-2.5 rounded-lg border font-semibold ${
+                    application.status === 'queued'
+                      ? 'bg-purple-100 border-purple-300 text-purple-900 dark:bg-purple-950/60 dark:text-purple-300'
+                      : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-500'
+                  }`}
+                >
+                  1. Queued
+                </div>
+                <div
+                  className={`p-2.5 rounded-lg border font-semibold ${
+                    application.status === 'preparing'
+                      ? 'bg-blue-100 border-blue-300 text-blue-900 dark:bg-blue-950/60 dark:text-blue-300 animate-pulse'
+                      : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-500'
+                  }`}
+                >
+                  2. Preparing
+                </div>
+                <div
+                  className={`p-2.5 rounded-lg border font-semibold ${
+                    application.status === 'needs_review'
+                      ? 'bg-amber-100 border-amber-300 text-amber-900 dark:bg-amber-950/60 dark:text-amber-300'
+                      : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-500'
+                  }`}
+                >
+                  3. Needs Review
+                </div>
+                <div
+                  className={`p-2.5 rounded-lg border font-semibold ${
+                    application.status === 'ready'
+                      ? 'bg-emerald-100 border-emerald-300 text-emerald-900 dark:bg-emerald-950/60 dark:text-emerald-300'
+                      : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-500'
+                  }`}
+                >
+                  4. Ready
+                </div>
+                <div
+                  className={`p-2.5 rounded-lg border font-semibold col-span-2 sm:col-span-1 ${
+                    application.status === 'submitted'
+                      ? 'bg-cyan-100 border-cyan-300 text-cyan-900 dark:bg-cyan-950/60 dark:text-cyan-300'
+                      : application.status === 'failed'
+                      ? 'bg-rose-100 border-rose-300 text-rose-900 dark:bg-rose-950/60 dark:text-rose-300'
+                      : application.status === 'confirmation_required'
+                      ? 'bg-orange-100 border-orange-300 text-orange-900 dark:bg-orange-950/60 dark:text-orange-300'
+                      : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-500'
+                  }`}
+                >
+                  5. {application.status === 'submitted' ? 'Submitted' : application.status === 'failed' ? 'Failed' : application.status === 'confirmation_required' ? 'Verify' : 'Outcome'}
+                </div>
+              </div>
+            </div>
+
+            {/* Application Metrics & Detail Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
+              <div className="p-3.5 rounded-xl border bg-slate-50 dark:bg-slate-850 border-slate-200/80 dark:border-slate-800">
+                <span className="text-slate-400 uppercase font-semibold text-[10px]">Current Status</span>
+                <div className="text-sm font-bold text-slate-900 dark:text-white mt-1 capitalize flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-blue-500" />
+                  {application.status.replace('_', ' ')}
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-xl border bg-slate-50 dark:bg-slate-850 border-slate-200/80 dark:border-slate-800">
+                <span className="text-slate-400 uppercase font-semibold text-[10px]">Processing Attempts</span>
+                <div className="text-sm font-bold text-slate-900 dark:text-white mt-1">
+                  {application.attempt_count} / {application.max_retries} maximum
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-xl border bg-slate-50 dark:bg-slate-850 border-slate-200/80 dark:border-slate-800">
+                <span className="text-slate-400 uppercase font-semibold text-[10px]">Next Scheduled Retry</span>
+                <div className="text-sm font-bold text-slate-900 dark:text-white mt-1">
+                  {application.next_retry_at ? new Date(application.next_retry_at).toLocaleTimeString() : 'None (Idle)'}
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-xl border bg-slate-50 dark:bg-slate-850 border-slate-200/80 dark:border-slate-800">
+                <span className="text-slate-400 uppercase font-semibold text-[10px]">Idempotency Key</span>
+                <div className="text-xs font-mono text-slate-600 dark:text-slate-400 mt-1 truncate" title={application.idempotency_key || ''}>
+                  {application.idempotency_key ? application.idempotency_key.substring(0, 18) + '...' : 'None'}
+                </div>
+              </div>
+            </div>
+
+            {/* Error banner if last error exists */}
+            {application.last_error_message && (
+              <div className="p-4 rounded-xl bg-rose-50 text-rose-800 dark:bg-rose-950/40 dark:text-rose-300 border border-rose-200 dark:border-rose-800 text-xs flex items-start gap-3">
+                <span className="text-base">⚠</span>
+                <div>
+                  <div className="font-bold">Error [{application.last_error_code || 'TRANSIENT_FAILURE'}]</div>
+                  <div className="mt-0.5">{application.last_error_message}</div>
+                </div>
+              </div>
+            )}
+
+            {/* Contextual Transition Actions */}
+            {application.status === 'needs_review' && (
+              <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                <div>
+                  <div className="font-bold text-amber-900 dark:text-amber-200">Candidate Review Required</div>
+                  <div className="text-amber-700 dark:text-amber-300 mt-0.5">
+                    Please confirm mandatory qualifications, custom employer questions, or specific application fields before proceeding.
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleTransitionApp('ready', 'Candidate confirmed review requirements.')}
+                    disabled={appBusy}
+                    className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold transition-colors disabled:opacity-50"
+                  >
+                    ✓ Mark Review Satisfied (Ready)
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {application.status === 'confirmation_required' && (
+              <div className="p-4 rounded-xl bg-orange-50 dark:bg-orange-950/40 border border-orange-200 dark:border-orange-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                <div>
+                  <div className="font-bold text-orange-900 dark:text-orange-200">Submission Outcome Ambiguous</div>
+                  <div className="text-orange-700 dark:text-orange-300 mt-0.5">
+                    A network timeout or ambiguous platform response occurred. Please verify whether JobStreet received your application.
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={() => handleTransitionApp('submitted', 'Verified submission confirmed by user.')}
+                    disabled={appBusy}
+                    className="px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-700 text-white font-semibold transition-colors"
+                  >
+                    Confirm Submission
+                  </button>
+                  <button
+                    onClick={() => handleTransitionApp('ready', 'Verified that submission did not occur; safely reverting to ready.')}
+                    disabled={appBusy}
+                    className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 font-semibold transition-colors"
+                  >
+                    Confirm Not Submitted
+                  </button>
+                  <button
+                    onClick={() => handleTransitionApp('failed', 'Terminal failure confirmed.')}
+                    disabled={appBusy}
+                    className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-semibold transition-colors"
+                  >
+                    Mark Failed
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Append-only Activity Timeline */}
+            <div>
+              <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                Append-Only Application Activity History ({application.activities?.length || 0})
+              </h3>
+              <div className="bg-slate-50 dark:bg-slate-850 rounded-xl border border-slate-200/80 dark:border-slate-800 p-4 space-y-2.5 max-h-56 overflow-y-auto text-xs">
+                {application.activities && application.activities.length > 0 ? (
+                  application.activities.map((act) => (
+                    <div key={act.id} className="flex items-start justify-between gap-3 pb-2 border-b border-slate-200/50 dark:border-slate-800 last:border-b-0 last:pb-0">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-slate-800 dark:text-slate-200">
+                            {act.message}
+                          </span>
+                          {act.to_status && (
+                            <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 uppercase">
+                              {act.to_status}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-slate-400 mt-0.5">
+                          Actor: {act.actor} • Event: {act.event_type}
+                        </div>
+                      </div>
+                      <span className="text-[11px] text-slate-400 shrink-0">
+                        {new Date(act.created_at).toLocaleString()}
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-slate-400 text-center py-2">No activity records logged yet.</div>
+                )}
+              </div>
+            </div>
+
+            {/* Phase 7: AI Application Preparation Workspace */}
+            <div className="pt-6 border-t border-slate-200 dark:border-slate-800">
+              <div className="flex items-center gap-2 mb-4">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider">
+                  AI Application Preparation Workspace
+                </h3>
+                <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300">
+                  Phase 7
+                </span>
+              </div>
+              <ApplicationPreparationWorkspace
+                applicationId={application.id}
+                onReadinessChange={async () => {
+                  try {
+                    const refreshedJob = await getJobListing(jobId);
+                    if (refreshedJob.application) {
+                      setApplication(refreshedJob.application as JobApplicationRecord);
+                    }
+                  } catch {
+                    // silent
+                  }
+                }}
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="p-8 text-center bg-slate-50 dark:bg-slate-850 rounded-xl border border-slate-200/80 dark:border-slate-800 space-y-3">
+            <div className="w-10 h-10 rounded-full bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 flex items-center justify-center mx-auto text-lg font-bold">
+              🚀
+            </div>
+            <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+              No Application Record Initialized
+            </h3>
+            <p className="text-xs text-slate-500 max-w-md mx-auto">
+              Initialize a persistent application record for this job listing to begin tracking its preparation lifecycle and queue status.
+            </p>
+            <button
+              onClick={handleCreateApp}
+              disabled={appBusy}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-sm transition-colors disabled:opacity-50"
+            >
+              {appBusy ? 'Initializing...' : '⚡ Initialize Application Record'}
+            </button>
+          </div>
+        )}
+      </div>
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
           <div>
