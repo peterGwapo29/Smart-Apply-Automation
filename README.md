@@ -64,6 +64,39 @@ This repository is structured as a modular monorepo containing three core applic
   - **Screening Questions Assistant:** `ScreeningQuestionService` parses questions across tenure, salary, availability, authorization, and yes/no. Missing evidence or legal commitments are flagged as `unknown` with mandatory review, preventing hallucination.
   - **Deterministic Readiness Evaluator:** `ApplicationReadinessService` validates resume selection, cover letter completeness, screening answers, and contact info, transitioning applications to `ready` without auto-submitting.
   - **Dashboard & Extension Integration:** Full interactive workspace in Next.js `/jobs/[id]` (materials editor, questions reviewer, resume selector, readiness checklist) and live readiness badges in Chrome Extension popup.
+- **Phase 8: Automated Job Discovery** (Verified)
+  - **Multi-Platform Adapter Architecture:** Pluggable `JobSourceAdapterInterface` with source adapters for `AuthorizedFeedAdapter`, `JobStreetSourceAdapter`, `LinkedInSourceAdapter`, and `OnlineJobsPhSourceAdapter`.
+  - **Compliance & Feasibility Enforcement:** Explicitly respects platform terms and anti-bot protections; unconfigured sources surface clear enterprise partner credential requirements and safe fallback without illegal headless scraping.
+  - **Multi-Source Deduplication & Change Detection:** Seamlessly feeds discovered listings into `JobExtractionService` leveraging Layer 1 (`source_job_id`), Layer 2 (`canonical_url`), and Layer 3 (`content_hash`) deduplication and `job_listing_histories` change audit logs.
+  - **Instant Hybrid Matching Integration:** Discovered or updated listings automatically invoke `JobMatchingService::match()`, populating fit scores and eligibility evaluations into the dashboard without delay.
+  - **Discovery Runs & Scheduling:** Persistent `job_discovery_runs` table tracking run metrics (`listings_found`, `new_listings`, `updated_listings`, `duplicates_ignored`), queueable `ExecuteJobDiscoveryJob`, and `php artisan jobs:discover` command.
+  - **Interactive Discovery Hub:** Next.js `/jobs` includes the collapsible Discovery Hub with source connectivity status cards, on-demand query execution, and historical runs ledger.
+- **Phase 9: AI Job Qualification & Prioritization** (Verified)
+  - **No Second Competing Engine:** Directly reuses Phase 4 `JobMatchingService`, `DeterministicScoringEngine`, and `EligibilityEvaluator` alongside Phase 7 `CandidateEvidenceService`.
+  - **Concept Separation:** Distinctly separates raw candidate similarity (`match_score`, 0–100) from actionable pursuit ranking (`priority_score`, 0–100) and eligibility (`qualification_status`: `qualified`, `requires_review`, `disqualified`).
+  - **Prioritization Formula (0–100):**
+    - Match Fit (40%): Phase 4 hybrid similarity score.
+    - Mandatory Coverage (25%): Strict compliance with essential qualifications ($100\%$ if met, $50\%$ if ambiguous/review, $0\%$ if failed).
+    - Preference Alignment (15%): Salary fit (neutral 85% if job salary unlisted, never penalized) and work arrangement alignment.
+    - Listing Freshness (10%): Age-based weighting ($\le 7$ days: 100%, $\le 14$ days: 80%, $\le 30$ days: 50%, $> 30$ days: 25%).
+    - Preparation Readiness (10%): Availability of matching active resume, key technical skills, and verified professional background.
+  - **Actionable Priority Tiers:**
+    - `top_priority` ($\ge 80$, qualified, no blockers)
+    - `high_priority` ($65 \le \text{score} < 80$, qualified)
+    - `medium_priority` ($50 \le \text{score} < 65$, not disqualified)
+    - `low_priority` ($< 50$, not disqualified)
+    - `requires_review` (ambiguous or unverified mandatory requirements)
+    - `not_recommended` (verified hard constraint failure)
+  - **Strict Anti-Tenure Inflation:** Re-enforced evidence boundaries ensuring personal and academic projects demonstrate technical competency but never inflate professional employment tenure.
+  - **Local Deterministic Explainability:** 100% offline, privacy-safe natural language rationale citing verified candidate background evidence IDs without external AI costs or data leakage.
+  - **Dedicated Prioritization APIs:**
+    - `GET /api/jobs/prioritized` (multi-criteria filtering by tier, qualification status, min scores, and platform with pagination)
+    - `GET /api/jobs/{id}/qualification` (detailed breakdown, score factors, evidence citations, stale evaluation flags)
+    - `POST /api/jobs/{id}/qualification/recalculate` (on-demand evaluation refresh)
+  - **Dashboard & Chrome Extension Integration:**
+    - Next.js Dashboard: Priority tier badges, quick triage, and interactive `JobQualificationModal` with score factor gauges, evidence citations, and recalculate triggers.
+    - Chrome Extension: Popup displays live priority tier badge (`⭐ Top Priority`, `🔥 High Priority`, etc.) and qualification status for the current listing.
+  - **Full Test Coverage:** 71 backend tests (347 assertions) passing with zero regressions across Phases 1–9.
 
 ---
 

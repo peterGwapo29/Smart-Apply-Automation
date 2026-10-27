@@ -163,6 +163,31 @@ export const App: React.FC = () => {
     );
   };
 
+  const renderPriorityBadge = (matchObj?: NonNullable<JobCheckResponse['job']>['latest_match']) => {
+    if (!matchObj || !matchObj.priority_tier) return null;
+    const tier = matchObj.priority_tier;
+    const score = matchObj.priority_score !== undefined && matchObj.priority_score !== null ? Math.round(Number(matchObj.priority_score)) : null;
+    let badgeClass = 'badge-slate';
+    let label = `Priority: ${tier.replace('_', ' ')}`;
+    if (tier === 'top_priority') {
+      badgeClass = 'badge-emerald';
+      label = `⭐ Top Priority ${score !== null ? `(${score})` : ''}`;
+    } else if (tier === 'high_priority') {
+      badgeClass = 'badge-emerald';
+      label = `🔥 High Priority ${score !== null ? `(${score})` : ''}`;
+    } else if (tier === 'medium_priority') {
+      badgeClass = 'badge-slate';
+      label = `Medium Priority ${score !== null ? `(${score})` : ''}`;
+    } else if (tier === 'requires_review') {
+      badgeClass = 'badge-amber';
+      label = `⚠️ Needs Review ${score !== null ? `(${score})` : ''}`;
+    } else if (tier === 'not_recommended') {
+      badgeClass = 'badge-rose';
+      label = '⛔ Not Recommended';
+    }
+    return <span className={`badge-tag ${badgeClass}`}>{label}</span>;
+  };
+
   const renderApplicationBadge = (status?: string) => {
     if (!status) return null;
     let badgeClass = 'badge-slate';
@@ -187,7 +212,7 @@ export const App: React.FC = () => {
       <div className="popup-header">
         <div>
           <h1 className="popup-title">JobStreet Quick Apply</h1>
-          <span className="popup-badge">Manifest V3 • Phase 7</span>
+          <span className="popup-badge">Manifest V3 • Phase 9</span>
         </div>
       </div>
 
@@ -248,6 +273,7 @@ export const App: React.FC = () => {
                     {listingMatch.job.latest_match ? (
                       <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
                         {renderMatchBadge(listingMatch.job.latest_match)}
+                        {renderPriorityBadge(listingMatch.job.latest_match)}
                         {renderApplicationBadge(listingMatch.job.application?.status)}
                       </div>
                     ) : (
@@ -398,7 +424,7 @@ export const App: React.FC = () => {
       )}
 
       <div className="popup-footer">
-        JobStreet Quick Apply Automation • Phase 7
+        JobStreet Quick Apply Automation • Phase 8
       </div>
     </div>
   );

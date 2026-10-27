@@ -76,4 +76,9 @@ class User extends Authenticatable
     {
         return $this->hasMany(JobApplication::class);
     }
+
+    public function discoveryRuns(): HasMany
+    {
+        return $this->hasMany(JobDiscoveryRun::class)->orderBy('created_at', 'desc');
+    }
 }

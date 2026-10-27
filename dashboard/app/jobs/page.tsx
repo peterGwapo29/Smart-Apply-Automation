@@ -19,6 +19,8 @@ import {
   ReviewWorkflowStatus,
   ApplicationStatus,
 } from '@/lib/api';
+import JobDiscoveryHub from '@/components/JobDiscoveryHub';
+import JobQualificationModal from '@/components/JobQualificationModal';
 
 type TabKey = 'all' | 'strong_matches' | 'review_queue' | 'bookmarked' | 'interested' | 'archived';
 
@@ -51,6 +53,9 @@ function JobListingsContent() {
   const [batchNotice, setBatchNotice] = useState<string | null>(null);
   const [bookmarkingId, setBookmarkingId] = useState<number | null>(null);
   const [updatingReviewId, setUpdatingReviewId] = useState<number | null>(null);
+  const [showDiscoveryHub, setShowDiscoveryHub] = useState(false);
+  const [selectedQualJobId, setSelectedQualJobId] = useState<number | null>(null);
+  const [showQualModal, setShowQualModal] = useState(false);
 
   const fetchSummary = useCallback(async () => {
     try {
@@ -255,6 +260,50 @@ function JobListingsContent() {
     }
   };
 
+  const getPriorityTierBadge = (tier?: string | null, score?: number | string | null) => {
+    const formattedScore = score !== undefined && score !== null ? Math.round(Number(score)) : null;
+    switch (tier) {
+      case 'top_priority':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-700">
+            ⭐ Top Priority {formattedScore !== null ? `(${formattedScore})` : ''}
+          </span>
+        );
+      case 'high_priority':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-700">
+            🔥 High Priority {formattedScore !== null ? `(${formattedScore})` : ''}
+          </span>
+        );
+      case 'medium_priority':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 border border-blue-300 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-700">
+            Medium Priority {formattedScore !== null ? `(${formattedScore})` : ''}
+          </span>
+        );
+      case 'low_priority':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-700 border border-slate-300 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700">
+            Low Priority {formattedScore !== null ? `(${formattedScore})` : ''}
+          </span>
+        );
+      case 'requires_review':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-orange-100 text-orange-900 border border-orange-300 dark:bg-orange-950/60 dark:text-orange-300 dark:border-orange-700">
+            ⚠️ Review Needed {formattedScore !== null ? `(${formattedScore})` : ''}
+          </span>
+        );
+      case 'not_recommended':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-rose-100 text-rose-800 border border-rose-300 dark:bg-rose-950/60 dark:text-rose-400 dark:border-rose-700">
+            ⛔ Not Recommended
+          </span>
+        );
+      default:
+        return null;
+    }
+  };
+
   const getReviewStatusPill = (status?: string) => {
     switch (status) {
       case 'interested':
@@ -363,6 +412,16 @@ function JobListingsContent() {
         </div>
         <div className="flex items-center gap-3">
           <button
+            onClick={() => setShowDiscoveryHub(!showDiscoveryHub)}
+            className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-semibold transition-colors shadow-sm ${
+              showDiscoveryHub
+                ? 'bg-slate-800 text-white dark:bg-slate-200 dark:text-slate-900'
+                : 'border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+            }`}
+          >
+            🔍 {showDiscoveryHub ? 'Hide Discovery Hub' : 'Automated Discovery'}
+          </button>
+          <button
             onClick={handleBatchMatch}
             disabled={batchMatching}
             className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition-colors shadow-sm disabled:opacity-50"
@@ -380,6 +439,18 @@ function JobListingsContent() {
           </Link>
         </div>
       </div>
+
+      {/* Phase 8: Automated Job Discovery Hub */}
+      {showDiscoveryHub && (
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
+          <JobDiscoveryHub
+            onDiscoveryComplete={() => {
+              fetchJobs();
+              fetchSummary();
+            }}
+          />
+        </div>
+      )}
 
       {batchNotice && (
         <div className="p-4 rounded-xl bg-emerald-50 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-sm flex items-center justify-between">
@@ -757,9 +828,10 @@ function JobListingsContent() {
 
                     {/* Match Score Badge */}
                     {job.latest_match ? (
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         {getMatchScoreBadge(Number(job.latest_match.overall_score), summary?.min_match_threshold ?? 70)}
                         {getEligibilityBadge(job.latest_match.eligibility_status)}
+                        {getPriorityTierBadge(job.latest_match.priority_tier, job.latest_match.priority_score)}
                       </div>
                     ) : (
                       <button
@@ -882,6 +954,16 @@ function JobListingsContent() {
                     </button>
                   )}
 
+                  <button
+                    onClick={() => {
+                      setSelectedQualJobId(job.id);
+                      setShowQualModal(true);
+                    }}
+                    className="px-3 py-1.5 rounded-lg border border-purple-200 dark:border-purple-800 bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/50 dark:hover:bg-purple-900/60 text-xs font-semibold text-purple-700 dark:text-purple-300 transition-colors"
+                  >
+                    AI Priority
+                  </button>
+
                   <Link
                     href={`/jobs/${job.id}`}
                     className="px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
@@ -919,6 +1001,19 @@ function JobListingsContent() {
           })}
         </div>
       )}
+      {/* Job Qualification & Prioritization Modal (Phase 9) */}
+      <JobQualificationModal
+        jobId={selectedQualJobId}
+        isOpen={showQualModal}
+        onClose={() => {
+          setShowQualModal(false);
+          setSelectedQualJobId(null);
+        }}
+        onRecalculated={() => {
+          fetchJobs();
+          fetchSummary();
+        }}
+      />
     </main>
   );
 }

@@ -39,6 +39,9 @@ export interface JobCheckResponse {
       overall_score: number | string;
       eligibility_status: 'eligible' | 'disqualified' | 'requires_review';
       technical_score: number | string;
+      priority_score?: number | string | null;
+      priority_tier?: string | null;
+      qualification_status?: string | null;
     } | null;
   } | null;
 }

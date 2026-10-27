@@ -767,6 +767,40 @@ export interface JobMatchRecord {
   } | null;
   scoring_version: string;
   calculated_at: string;
+  priority_score?: number | string | null;
+  priority_tier?: 'top_priority' | 'high_priority' | 'medium_priority' | 'low_priority' | 'requires_review' | 'not_recommended' | null;
+  qualification_status?: 'qualified' | 'requires_review' | 'disqualified' | null;
+  evaluation_confidence?: 'high' | 'medium' | 'low' | null;
+  qualification_breakdown?: {
+    qualification_status: string;
+    priority_score: number;
+    priority_tier: string;
+    score_factors: {
+      match_score: number;
+      mandatory_coverage: number;
+      preference_alignment: number;
+      listing_freshness: number;
+      preparation_readiness: number;
+    };
+    matched_requirements: Array<{
+      type: string;
+      name: string;
+      evidence_id: string | null;
+      evidence_label: string;
+      verified: boolean;
+    }>;
+    missing_requirements: Array<{
+      type: string;
+      name: string;
+      severity: string;
+      note: string;
+    }>;
+    blocking_issues: string[];
+    warnings: Array<{ criterion: string; reason: string }>;
+    practical_projects_count?: number;
+    explanation: string;
+    evaluated_at: string;
+  } | null;
   job_listing?: JobListingRecord;
 }
 
@@ -1302,4 +1336,230 @@ export async function evaluateApplicationReadiness(id: number): Promise<{
   }
 
   return data;
+}
+
+
+// ---------------------------------------------------------
+// Phase 8: Automated Job Discovery Interfaces & Client
+// ---------------------------------------------------------
+
+export interface DiscoverySourceRecord {
+  identifier: string;
+  display_name: string;
+  supported_capabilities: string[];
+  is_configured: boolean;
+  auth_status: {
+    status: 'ready' | 'unconfigured' | 'requires_enterprise_credentials' | 'error';
+    message: string;
+    required_credentials: string[];
+  };
+}
+
+export interface JobDiscoveryRunRecord {
+  id: number;
+  user_id: number;
+  source_platform: string;
+  status: 'pending' | 'running' | 'completed' | 'completed_with_errors' | 'failed' | 'cancelled';
+  search_criteria?: {
+    keywords?: string;
+    location?: string;
+    work_arrangement?: string;
+    min_salary?: number;
+  } | null;
+  listings_found: number;
+  new_listings: number;
+  updated_listings: number;
+  duplicates_ignored: number;
+  error_message?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+  created_at: string;
+}
+
+export async function getDiscoverySources(): Promise<DiscoverySourceRecord[]> {
+  const baseUrl = getApiBaseUrl();
+  const response = await fetch(`${baseUrl}/discovery/sources`, {
+    method: 'GET',
+    headers: getHeaders(),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to fetch discovery sources.');
+  }
+
+  return data.sources;
+}
+
+export async function getDiscoveryRuns(page?: number): Promise<{
+  data: JobDiscoveryRunRecord[];
+  meta: {
+    current_page: number;
+    last_page: number;
+    per_page: number;
+    total: number;
+  };
+}> {
+  const baseUrl = getApiBaseUrl();
+  const query = new URLSearchParams();
+  if (page) query.append('page', page.toString());
+
+  const response = await fetch(`${baseUrl}/discovery/runs${query.toString() ? '?' + query.toString() : ''}`, {
+    method: 'GET',
+    headers: getHeaders(),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to fetch discovery runs.');
+  }
+
+  return data;
+}
+
+export async function triggerDiscoveryRun(payload: {
+  source_platform?: string;
+  keywords?: string;
+  location?: string;
+  work_arrangement?: string;
+  min_salary?: number;
+}): Promise<{ run: JobDiscoveryRunRecord; message: string }> {
+  const baseUrl = getApiBaseUrl();
+  const response = await fetch(`${baseUrl}/discovery/runs`, {
+    method: 'POST',
+    headers: getHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to trigger discovery run.');
+  }
+
+  return data;
+}
+
+export async function cancelDiscoveryRun(id: number): Promise<JobDiscoveryRunRecord> {
+  const baseUrl = getApiBaseUrl();
+  const response = await fetch(`${baseUrl}/discovery/runs/${id}/cancel`, {
+    method: 'POST',
+    headers: getHeaders(),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to cancel discovery run.');
+  }
+
+  return data.run;
+}
+
+// Phase 9: AI Job Qualification & Prioritization API Methods
+export interface PrioritizedJobListing extends JobListingRecord {
+  priority_score: number;
+  priority_tier: 'top_priority' | 'high_priority' | 'medium_priority' | 'low_priority' | 'requires_review' | 'not_recommended';
+  qualification_status: 'qualified' | 'requires_review' | 'disqualified';
+  match_score: number;
+  evaluation_confidence: 'high' | 'medium' | 'low';
+  evaluated_at?: string;
+}
+
+export interface PrioritizedJobsResponse {
+  status: string;
+  data: PrioritizedJobListing[];
+  pagination: {
+    current_page: number;
+    last_page: number;
+    per_page: number;
+    total: number;
+  };
+  meta: {
+    tier_counts: {
+      top_priority: number;
+      high_priority: number;
+      medium_priority: number;
+      low_priority: number;
+      requires_review: number;
+      not_recommended: number;
+    };
+  };
+}
+
+export async function getPrioritizedJobs(params?: {
+  priority_tier?: string;
+  qualification_status?: string;
+  min_priority?: number;
+  min_match?: number;
+  source?: string;
+  active_only?: boolean;
+  page?: number;
+  per_page?: number;
+}): Promise<PrioritizedJobsResponse> {
+  const baseUrl = getApiBaseUrl();
+  const searchParams = new URLSearchParams();
+
+  if (params?.priority_tier) searchParams.set('priority_tier', params.priority_tier);
+  if (params?.qualification_status) searchParams.set('qualification_status', params.qualification_status);
+  if (params?.min_priority !== undefined) searchParams.set('min_priority', params.min_priority.toString());
+  if (params?.min_match !== undefined) searchParams.set('min_match', params.min_match.toString());
+  if (params?.source) searchParams.set('source', params.source);
+  if (params?.active_only) searchParams.set('active_only', 'true');
+  if (params?.page) searchParams.set('page', params.page.toString());
+  if (params?.per_page) searchParams.set('per_page', params.per_page.toString());
+
+  const response = await fetch(`${baseUrl}/jobs/prioritized?${searchParams.toString()}`, {
+    headers: getHeaders(),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to fetch prioritized jobs.');
+  }
+
+  return data;
+}
+
+export interface JobQualificationDetail {
+  job_id: number;
+  job_title: string;
+  company_name: string;
+  source: string;
+  source_url: string;
+  match_score: number;
+  priority_score: number;
+  priority_tier: 'top_priority' | 'high_priority' | 'medium_priority' | 'low_priority' | 'requires_review' | 'not_recommended';
+  qualification_status: 'qualified' | 'requires_review' | 'disqualified';
+  evaluation_confidence: 'high' | 'medium' | 'low';
+  breakdown: NonNullable<JobMatchRecord['qualification_breakdown']>;
+  evaluated_at?: string;
+  is_stale: boolean;
+}
+
+export async function getJobQualification(jobId: number): Promise<JobQualificationDetail> {
+  const baseUrl = getApiBaseUrl();
+  const response = await fetch(`${baseUrl}/jobs/${jobId}/qualification`, {
+    headers: getHeaders(),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to fetch job qualification details.');
+  }
+
+  return data.data;
+}
+
+export async function recalculateJobQualification(jobId: number): Promise<JobQualificationDetail> {
+  const baseUrl = getApiBaseUrl();
+  const response = await fetch(`${baseUrl}/jobs/${jobId}/qualification/recalculate`, {
+    method: 'POST',
+    headers: getHeaders(),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to recalculate job qualification.');
+  }
+
+  return data.data;
 }

@@ -71,7 +71,17 @@ class JobExtractionService
                     if (array_key_exists($field, $extracted) && $extracted[$field] !== null) {
                         $oldVal = $existing->{$field};
                         $newVal = $extracted[$field];
-                        if ($oldVal !== $newVal) {
+                        
+                        $isDifferent = false;
+                        if (is_numeric($oldVal) && is_numeric($newVal)) {
+                            $isDifferent = ((float)$oldVal != (float)$newVal);
+                        } elseif (is_array($oldVal) || is_array($newVal)) {
+                            $isDifferent = (json_encode($oldVal) !== json_encode($newVal));
+                        } else {
+                            $isDifferent = ($oldVal !== $newVal);
+                        }
+
+                        if ($isDifferent) {
                             $changes[$field] = ['old' => $oldVal, 'new' => $newVal];
                             $existing->{$field} = $newVal;
                         }

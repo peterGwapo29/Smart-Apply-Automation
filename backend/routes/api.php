@@ -5,8 +5,10 @@ use App\Http\Controllers\Api\CandidateProfileController;
 use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\Api\JobApplicationController;
 use App\Http\Controllers\Api\JobApplicationPreparationController;
+use App\Http\Controllers\Api\JobDiscoveryController;
 use App\Http\Controllers\Api\JobListingController;
 use App\Http\Controllers\Api\JobMatchingController;
+use App\Http\Controllers\Api\JobQualificationController;
 use App\Http\Controllers\Api\JobWorkflowController;
 use App\Http\Controllers\Api\ResumeController;
 use Illuminate\Support\Facades\Route;
@@ -47,6 +49,11 @@ Route::get('/jobs/matches', [JobMatchingController::class, 'indexMatches']);
 Route::post('/jobs/{id}/match', [JobMatchingController::class, 'match']);
 Route::get('/jobs/{id}/match', [JobMatchingController::class, 'show']);
 
+// AI Job Qualification & Prioritization (Phase 9)
+Route::get('/jobs/prioritized', [JobQualificationController::class, 'prioritized']);
+Route::get('/jobs/{id}/qualification', [JobQualificationController::class, 'show']);
+Route::post('/jobs/{id}/qualification/recalculate', [JobQualificationController::class, 'recalculate']);
+
 // Job Listings & Ingestion (Phase 3 & Phase 5)
 Route::get('/jobs/check', [JobListingController::class, 'checkUrl']);
 Route::get('/jobs/dashboard-summary', [JobListingController::class, 'summary']);
@@ -79,5 +86,13 @@ Route::put('/applications/{id}/materials', [JobApplicationPreparationController:
 Route::post('/applications/{id}/screening-questions/draft', [JobApplicationPreparationController::class, 'draftScreeningQuestions']);
 Route::put('/applications/{id}/screening-questions/{questionId}', [JobApplicationPreparationController::class, 'updateScreeningQuestion']);
 Route::get('/applications/{id}/readiness', [JobApplicationPreparationController::class, 'evaluateReadiness']);
+
+// Automated Job Discovery (Phase 8)
+Route::get('/discovery/sources', [JobDiscoveryController::class, 'sources']);
+Route::get('/discovery/runs', [JobDiscoveryController::class, 'runs']);
+Route::post('/discovery/runs', [JobDiscoveryController::class, 'triggerRun']);
+Route::get('/discovery/runs/{id}', [JobDiscoveryController::class, 'showRun']);
+Route::post('/discovery/runs/{id}/cancel', [JobDiscoveryController::class, 'cancelRun']);
+
 
 

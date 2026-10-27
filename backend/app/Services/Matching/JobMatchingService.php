@@ -11,11 +11,16 @@ use Illuminate\Support\Facades\DB;
 
 class JobMatchingService
 {
+    protected JobQualificationService $qualificationService;
+
     public function __construct(
         protected DeterministicScoringEngine $scoringEngine,
         protected EligibilityEvaluator $eligibilityEvaluator,
-        protected SemanticAnalysisProviderInterface $semanticProvider
-    ) {}
+        protected SemanticAnalysisProviderInterface $semanticProvider,
+        ?JobQualificationService $qualificationService = null
+    ) {
+        $this->qualificationService = $qualificationService ?? app(JobQualificationService::class);
+    }
 
     /**
      * Compute and persist match score between candidate profile and a job listing.
@@ -61,7 +66,7 @@ class JobMatchingService
         );
 
         // Persist to database
-        return DB::transaction(function () use ($user, $profile, $job, $scoreResult, $eligibilityResult, $semanticResult) {
+        $match = DB::transaction(function () use ($user, $profile, $job, $scoreResult, $eligibilityResult, $semanticResult) {
             return JobMatch::updateOrCreate(
                 [
                     'candidate_profile_id' => $profile->id,
@@ -87,6 +92,9 @@ class JobMatchingService
                 ]
             );
         });
+
+        // 4. Component D: AI Job Qualification & Prioritization (Phase 9)
+        return $this->qualificationService->evaluateAndPrioritize($match, $profile, $job);
     }
 
     /**
