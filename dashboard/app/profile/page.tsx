@@ -9,7 +9,10 @@ import {
   deleteCandidateSkill,
   deleteCandidateExperience,
   deleteCandidateProject,
+  getCandidatePreferences,
+  updateCandidatePreferences,
   CandidateProfileData,
+  CandidatePreferences,
   SkillItemRecord,
   WorkExperienceRecord,
   PortfolioProjectRecord,
@@ -33,6 +36,18 @@ export default function CandidateProfilePage() {
   const [newSkillName, setNewSkillName] = useState('');
   const [newSkillCat, setNewSkillCat] = useState('backend');
   const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Phase 4 Preferences state
+  const [preferences, setPreferences] = useState<CandidatePreferences | null>(null);
+  const [prefSaving, setPrefSaving] = useState(false);
+  const [prefForm, setPrefForm] = useState({
+    min_salary: '60000',
+    preferred_salary: '90000',
+    salary_currency: 'PHP',
+    notice_period_weeks: 2,
+    work_arrangements: ['remote', 'hybrid'] as string[],
+    require_remote_only: false,
+  });
 
   const fetchProfile = async () => {
     try {
@@ -76,10 +91,53 @@ export default function CandidateProfilePage() {
         if (isMounted) setLoading(false);
       });
 
+    getCandidatePreferences()
+      .then((pref) => {
+        if (isMounted && pref) {
+          setPreferences(pref);
+          setPrefForm({
+            min_salary: pref.min_salary ? String(pref.min_salary) : '60000',
+            preferred_salary: pref.preferred_salary ? String(pref.preferred_salary) : '90000',
+            salary_currency: pref.salary_currency || 'PHP',
+            notice_period_weeks: pref.notice_period_weeks || 2,
+            work_arrangements: pref.work_arrangements || ['remote', 'hybrid'],
+            require_remote_only: Boolean(pref.hard_disqualifiers?.require_remote_only),
+          });
+        }
+      })
+      .catch(console.error);
+
     return () => {
       isMounted = false;
     };
   }, []);
+
+  const handleSavePreferences = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      setPrefSaving(true);
+      const updated = await updateCandidatePreferences({
+        min_salary: parseFloat(prefForm.min_salary) || 0,
+        preferred_salary: parseFloat(prefForm.preferred_salary) || 0,
+        salary_currency: prefForm.salary_currency,
+        notice_period_weeks: Number(prefForm.notice_period_weeks),
+        work_arrangements: prefForm.work_arrangements,
+        hard_disqualifiers: {
+          require_remote_only: prefForm.require_remote_only,
+        },
+      });
+      setPreferences(updated);
+      setStatusMsg({ type: 'success', text: 'Job matching preferences saved successfully!' });
+      setTimeout(() => setStatusMsg(null), 3000);
+    } catch (err: unknown) {
+      setStatusMsg({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Failed to save preferences.',
+      });
+    } finally {
+      setPrefSaving(false);
+    }
+  };
 
   const handleSaveBasicInfo = async () => {
     setStatusMsg(null);
@@ -307,6 +365,122 @@ export default function CandidateProfilePage() {
             </div>
           </div>
         )}
+      </section>
+
+      {/* Phase 4: Job Matching Preferences */}
+      <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 shadow-sm space-y-4">
+        <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-3">
+          <div>
+            <h2 className="text-base font-bold text-slate-900 dark:text-white">
+              Job Matching Preferences
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Configured criteria used by the deterministic matching engine to calculate salary and arrangement fit.
+            </p>
+          </div>
+          <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300">
+            Phase 4 Active
+          </span>
+        </div>
+
+        <form onSubmit={handleSavePreferences} className="space-y-4 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-slate-500 dark:text-slate-400 font-medium mb-1">
+                Minimum Acceptable Salary ({prefForm.salary_currency})
+              </label>
+              <input
+                type="number"
+                min="0"
+                step="1000"
+                value={prefForm.min_salary}
+                onChange={(e) => setPrefForm({ ...prefForm, min_salary: e.target.value })}
+                className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-medium"
+              />
+            </div>
+
+            <div>
+              <label className="block text-slate-500 dark:text-slate-400 font-medium mb-1">
+                Preferred Target Salary ({prefForm.salary_currency})
+              </label>
+              <input
+                type="number"
+                min="0"
+                step="1000"
+                value={prefForm.preferred_salary}
+                onChange={(e) => setPrefForm({ ...prefForm, preferred_salary: e.target.value })}
+                className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-medium"
+              />
+            </div>
+
+            <div>
+              <label className="block text-slate-500 dark:text-slate-400 font-medium mb-1">
+                Notice Period (Weeks)
+              </label>
+              <input
+                type="number"
+                min="0"
+                max="52"
+                value={prefForm.notice_period_weeks}
+                onChange={(e) => setPrefForm({ ...prefForm, notice_period_weeks: parseInt(e.target.value, 10) || 0 })}
+                className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-slate-500 dark:text-slate-400 font-medium mb-1.5">
+              Acceptable Work Arrangements
+            </label>
+            <div className="flex flex-wrap gap-4">
+              {[
+                { id: 'remote', label: 'Remote / Work From Home' },
+                { id: 'hybrid', label: 'Hybrid' },
+                { id: 'on_site', label: 'On-site' },
+              ].map((item) => {
+                const checked = prefForm.work_arrangements.includes(item.id);
+                return (
+                  <label key={item.id} className="inline-flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) => {
+                        const next = e.target.checked
+                          ? [...prefForm.work_arrangements, item.id]
+                          : prefForm.work_arrangements.filter((a) => a !== item.id);
+                        setPrefForm({ ...prefForm, work_arrangements: next });
+                      }}
+                      className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span className="text-slate-700 dark:text-slate-300 font-medium">{item.label}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <label className="inline-flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={prefForm.require_remote_only}
+                onChange={(e) => setPrefForm({ ...prefForm, require_remote_only: e.target.checked })}
+                className="rounded border-slate-300 text-rose-600 focus:ring-rose-500"
+              />
+              <span className="text-slate-700 dark:text-slate-300 font-medium">
+                Hard Disqualifier: Strictly Remote (Disqualify 100% on-site listings)
+              </span>
+            </label>
+
+            <button
+              type="submit"
+              disabled={prefSaving}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold disabled:opacity-50 transition-colors shadow-sm self-end"
+            >
+              {prefSaving ? 'Saving...' : 'Save Preferences'}
+            </button>
+          </div>
+        </form>
       </section>
 
       {/* 2. Skills by Category */}

@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class CandidateProfile extends Model
 {
@@ -57,5 +58,15 @@ class CandidateProfile extends Model
     public function portfolioProjects(): HasMany
     {
         return $this->hasMany(PortfolioProject::class);
+    }
+
+    public function preference(): HasOne
+    {
+        return $this->hasOne(CandidatePreference::class);
+    }
+
+    public function jobMatches(): HasMany
+    {
+        return $this->hasMany(JobMatch::class);
     }
 }

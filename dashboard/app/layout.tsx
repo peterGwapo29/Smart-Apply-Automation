@@ -48,13 +48,19 @@ export default function RootLayout({
                   >
                     Candidate Profile
                   </Link>
+                  <Link
+                    href="/jobs"
+                    className="px-3 py-2 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors font-semibold text-blue-600 dark:text-blue-400"
+                  >
+                    Job Listings
+                  </Link>
                 </div>
               </div>
 
               <div className="flex items-center gap-3">
                 <span className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60">
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  Phase 2 Active
+                  Phase 4 Active
                 </span>
               </div>
             </div>
