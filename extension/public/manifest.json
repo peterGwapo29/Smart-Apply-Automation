@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "name": "JobStreet Quick Apply",
+  "version": "1.0.0",
+  "description": "Job application automation platform evaluating job listings for JobStreet Quick Apply.",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "JobStreet Quick Apply",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "src/background/index.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.jobstreet.com.ph/*",
+        "https://*.jobstreet.com/*"
+      ],
+      "js": ["src/content/index.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:8000/*",
+    "http://localhost:8000/*"
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

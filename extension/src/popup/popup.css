@@ -1,0 +1,122 @@
+.popup-container {
+  padding: 18px;
+  box-sizing: border-box;
+}
+
+.popup-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 12px;
+}
+
+.popup-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+}
+
+.popup-badge {
+  font-size: 11px;
+  background-color: #e0f2fe;
+  color: #0369a1;
+  padding: 2px 6px;
+  border-radius: 9999px;
+  font-weight: 600;
+}
+
+.status-card {
+  background: white;
+  border-radius: 8px;
+  padding: 14px;
+  border: 1px solid #e2e8f0;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.status-label {
+  font-size: 12px;
+  color: #64748b;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+
+.status-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.status-indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.status-indicator.idle {
+  background-color: #94a3b8;
+}
+
+.status-indicator.loading {
+  background-color: #f59e0b;
+  animation: pulse 1s infinite alternate;
+}
+
+.status-indicator.success {
+  background-color: #10b981;
+}
+
+.status-indicator.error {
+  background-color: #ef4444;
+}
+
+.status-details {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #475569;
+  background-color: #f8fafc;
+  padding: 8px;
+  border-radius: 4px;
+  word-break: break-all;
+}
+
+.action-button {
+  width: 100%;
+  padding: 10px 16px;
+  background-color: #2563eb;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.action-button:hover:not(:disabled) {
+  background-color: #1d4ed8;
+}
+
+.action-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.popup-footer {
+  margin-top: 14px;
+  text-align: center;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+@keyframes pulse {
+  0% { opacity: 0.5; }
+  100% { opacity: 1; }
+}
