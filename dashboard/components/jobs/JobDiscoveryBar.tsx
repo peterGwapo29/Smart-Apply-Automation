@@ -12,7 +12,7 @@ export default function JobDiscoveryBar({
   onDiscoveryComplete,
   onOpenSettings,
 }: JobDiscoveryBarProps) {
-  const [keywords, setKeywords] = useState('Laravel');
+  const [keywords, setKeywords] = useState('');
   const [location, setLocation] = useState('Philippines');
   const [arrangement, setArrangement] = useState('all');
   const [source, setSource] = useState('authorized_feed');
@@ -30,9 +30,13 @@ export default function JobDiscoveryBar({
         location: location.trim() || undefined,
         work_arrangement: arrangement !== 'all' ? arrangement : undefined,
       });
-      setFeedback(res.message);
+      if (res.run?.error_message) {
+        setFeedback(`⚠️ ${res.run.error_message}`);
+      } else {
+        setFeedback(res.message);
+      }
       onDiscoveryComplete?.();
-      setTimeout(() => setFeedback(null), 5000);
+      setTimeout(() => setFeedback(null), 6000);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Discovery run execution failed.');
     } finally {
@@ -92,10 +96,10 @@ export default function JobDiscoveryBar({
             onChange={(e) => setSource(e.target.value)}
             className="w-full py-1.5 px-2 text-xs rounded-lg border border-slate-300 dark:border-[#293548] hover:border-slate-400 dark:hover:border-slate-600 bg-slate-50 dark:bg-[#0B1220] text-slate-800 dark:text-[#CBD5E1] outline-none transition-colors cursor-pointer"
           >
-            <option value="authorized_feed">Authorized Feed</option>
-            <option value="jobstreet">JobStreet</option>
-            <option value="linkedin">LinkedIn</option>
-            <option value="onlinejobs_ph">OnlineJobs.ph</option>
+            <option value="authorized_feed">Authorized Feed (Demo)</option>
+            <option value="jobstreet">JobStreet (Requires Key)</option>
+            <option value="linkedin">LinkedIn (Requires Key)</option>
+            <option value="onlinejobs_ph">OnlineJobs.ph (Requires Key)</option>
           </select>
         </div>
 

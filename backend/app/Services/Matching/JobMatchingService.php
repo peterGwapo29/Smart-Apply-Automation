@@ -104,7 +104,7 @@ class JobMatchingService
      */
     public function matchAll(User $user): array
     {
-        $jobs = JobListing::where('user_id', $user->id)->get();
+        $jobs = JobListing::where('user_id', $user->id)->activeOnly()->get();
         $scores = [];
 
         foreach ($jobs as $job) {

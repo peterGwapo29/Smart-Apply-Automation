@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useState, useCallback } from 'react';
+import { Suspense, useEffect, useState, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
 import {
@@ -24,6 +24,7 @@ import JobMetricsBar, { TabKey } from '@/components/jobs/JobMetricsBar';
 import JobFilterToolbar from '@/components/jobs/JobFilterToolbar';
 import JobList from '@/components/jobs/JobList';
 import JobQualificationModal from '@/components/JobQualificationModal';
+import PlatformAccountsCard from '@/components/PlatformAccountsCard';
 
 function JobListingsContent() {
   const searchParams = useSearchParams();
@@ -39,6 +40,16 @@ function JobListingsContent() {
 
   // Filters state
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const latestRequestIdRef = useRef(0);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [searchTerm]);
+
   const [techFilter, setTechFilter] = useState('');
   const [workArrangement, setWorkArrangement] = useState('');
   const [quickApplyFilter, setQuickApplyFilter] = useState('');
@@ -55,6 +66,7 @@ function JobListingsContent() {
   const [showSettingsDrawer, setShowSettingsDrawer] = useState(false);
   const [selectedQualJobId, setSelectedQualJobId] = useState<number | null>(null);
   const [showQualModal, setShowQualModal] = useState(false);
+  const [showPlatformAccounts, setShowPlatformAccounts] = useState(false);
 
   const fetchSummary = useCallback(async () => {
     try {
@@ -66,12 +78,13 @@ function JobListingsContent() {
   }, []);
 
   const fetchJobs = useCallback(async () => {
+    const requestId = ++latestRequestIdRef.current;
     try {
       setLoading(true);
       setError(null);
       const res = await getJobListings({
         tab: activeTab === 'all' ? undefined : activeTab,
-        search: searchTerm || undefined,
+        search: debouncedSearch.trim() || undefined,
         technology: techFilter || undefined,
         work_arrangement: workArrangement || undefined,
         quick_apply_status: quickApplyFilter || undefined,
@@ -80,15 +93,21 @@ function JobListingsContent() {
         is_changed: isChangedOnly ? true : undefined,
         is_stale: isStaleOnly ? true : undefined,
       });
-      setData(res);
+      if (requestId === latestRequestIdRef.current) {
+        setData(res);
+      }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to load job listings');
+      if (requestId === latestRequestIdRef.current) {
+        setError(err instanceof Error ? err.message : 'Failed to load job listings');
+      }
     } finally {
-      setLoading(false);
+      if (requestId === latestRequestIdRef.current) {
+        setLoading(false);
+      }
     }
   }, [
     activeTab,
-    searchTerm,
+    debouncedSearch,
     techFilter,
     workArrangement,
     quickApplyFilter,
@@ -219,6 +238,16 @@ function JobListingsContent() {
 
         <div className="flex items-center gap-2">
           <button
+            onClick={() => setShowPlatformAccounts(!showPlatformAccounts)}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold shadow-2xs transition-colors cursor-pointer ${
+              showPlatformAccounts
+                ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300'
+                : 'border-slate-300 dark:border-[#293548] bg-white dark:bg-[#111827] hover:bg-slate-100 dark:hover:bg-[#172033] text-slate-800 dark:text-[#CBD5E1]'
+            }`}
+          >
+            <span>🔑 Platform Accounts</span>
+          </button>
+          <button
             onClick={handleBatchMatch}
             disabled={batchMatching}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 dark:border-[#293548] bg-white dark:bg-[#111827] hover:bg-slate-100 dark:hover:bg-[#172033] text-slate-800 dark:text-[#CBD5E1] text-xs font-semibold shadow-2xs transition-colors disabled:opacity-50 cursor-pointer"
@@ -234,6 +263,11 @@ function JobListingsContent() {
           </Link>
         </div>
       </div>
+
+      {/* Platform Accounts Management Panel (Phase 10) */}
+      {showPlatformAccounts && (
+        <PlatformAccountsCard onClose={() => setShowPlatformAccounts(false)} />
+      )}
 
       {/* Batch Notice Alert */}
       {batchNotice && (

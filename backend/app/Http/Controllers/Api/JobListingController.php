@@ -59,6 +59,10 @@ class JobListingController extends Controller
         $data['listing_changed_since_review'] = $listingChanged;
         $data['effective_review_status'] = $workflow?->review_status ?? $job->review_status ?? 'new';
         $data['is_bookmarked'] = (bool) ($workflow?->is_bookmarked ?? false);
+        $data['is_actionable'] = $job->isActionable();
+        $data['listing_status'] = $job->listing_status;
+        $data['expires_at'] = $job->expires_at?->toIso8601String();
+        $data['last_verified_at'] = $job->last_verified_at?->toIso8601String();
         $data['workflow'] = $workflow ? $workflow->toArray() : null;
         $data['application'] = $application ? [
             'id' => $application->id,
@@ -125,6 +129,15 @@ class JobListingController extends Controller
                 'job_listings.id'
             );
 
+        // Phase 10: Summary metrics reflect active actionable opportunities by default
+        if (!$request->boolean('include_inactive')) {
+            $baseQuery->where('job_listings.listing_status', JobListing::STATUS_ACTIVE)
+                ->where(function ($sub) {
+                    $sub->whereNull('job_listings.expires_at')
+                        ->orWhere('job_listings.expires_at', '>', now());
+                });
+        }
+
         $total = (clone $baseQuery)->count('job_listings.id');
 
         $new = (clone $baseQuery)
@@ -162,6 +175,27 @@ class JobListingController extends Controller
             ->where('latest_matches.eligibility_status', 'disqualified')
             ->count('job_listings.id');
 
+        $archived = JobListing::where('job_listings.user_id', $user->id)
+            ->leftJoin('job_user_workflows', function ($join) use ($user) {
+                $join->on('job_listings.id', '=', 'job_user_workflows.job_listing_id')
+                    ->where('job_user_workflows.user_id', '=', $user->id);
+            })
+            ->where(function ($q) {
+                $q->where('job_user_workflows.review_status', 'archived')
+                    ->orWhereIn('job_listings.listing_status', [
+                        JobListing::STATUS_EXPIRED,
+                        JobListing::STATUS_CLOSED,
+                        JobListing::STATUS_WITHDRAWN,
+                        JobListing::STATUS_UNAVAILABLE,
+                        JobListing::STATUS_UNKNOWN,
+                    ])
+                    ->orWhere(function ($exp) {
+                        $exp->whereNotNull('job_listings.expires_at')
+                            ->where('job_listings.expires_at', '<=', now());
+                    });
+            })
+            ->count('job_listings.id');
+
         return response()->json([
             'status' => 'success',
             'summary' => [
@@ -173,6 +207,7 @@ class JobListingController extends Controller
                 'reviewed' => $reviewed,
                 'not_interested' => $notInterested,
                 'disqualified' => $disqualified,
+                'archived' => $archived,
                 'min_match_threshold' => $minMatchThreshold,
             ],
         ]);
@@ -210,8 +245,21 @@ class JobListingController extends Controller
             )
             ->select('job_listings.*');
 
-        // Quick View Tab filtering
+        // Phase 10: Enforce active-only opportunities by default
+        $includeInactive = $request->boolean('include_inactive');
         $tab = $request->query('tab');
+
+        if ($request->filled('listing_status')) {
+            $query->where('job_listings.listing_status', $request->query('listing_status'));
+        } elseif (!$includeInactive && $tab !== 'archived') {
+            $query->where('job_listings.listing_status', JobListing::STATUS_ACTIVE)
+                ->where(function ($sub) {
+                    $sub->whereNull('job_listings.expires_at')
+                        ->orWhere('job_listings.expires_at', '>', now());
+                });
+        }
+
+        // Quick View Tab filtering
         if ($tab === 'strong_matches') {
             $query->where('latest_matches.overall_score', '>=', $minMatchThreshold);
         } elseif ($tab === 'review_queue') {
@@ -225,17 +273,49 @@ class JobListingController extends Controller
         } elseif ($tab === 'interested') {
             $query->where('job_user_workflows.review_status', 'interested');
         } elseif ($tab === 'archived') {
-            $query->where('job_user_workflows.review_status', 'archived');
+            $query->where(function ($q) {
+                $q->where('job_user_workflows.review_status', 'archived')
+                    ->orWhereIn('job_listings.listing_status', [
+                        JobListing::STATUS_EXPIRED,
+                        JobListing::STATUS_CLOSED,
+                        JobListing::STATUS_WITHDRAWN,
+                        JobListing::STATUS_UNAVAILABLE,
+                        JobListing::STATUS_UNKNOWN,
+                    ])
+                    ->orWhere(function ($exp) {
+                        $exp->whereNotNull('job_listings.expires_at')
+                            ->where('job_listings.expires_at', '<=', now());
+                    });
+            });
         }
 
-        // Search in title, company, location, description
+        // Structured multi-token search in title, company, location, skills, and qualifications
         if ($request->filled('search')) {
-            $search = '%' . trim($request->input('search')) . '%';
-            $query->where(function ($q) use ($search) {
-                $q->where('job_listings.title', 'like', $search)
-                    ->orWhere('job_listings.company_name', 'like', $search)
-                    ->orWhere('job_listings.location', 'like', $search)
-                    ->orWhere('job_listings.description', 'like', $search);
+            $rawSearch = trim($request->input('search'));
+            $tokens = array_values(array_filter(explode(' ', $rawSearch), fn($t) => strlen(trim($t)) > 0));
+
+            $query->where(function ($q) use ($rawSearch, $tokens) {
+                $phrase = "%{$rawSearch}%";
+                $q->where('job_listings.title', 'like', $phrase)
+                    ->orWhere('job_listings.company_name', 'like', $phrase)
+                    ->orWhere('job_listings.location', 'like', $phrase)
+                    ->orWhere('job_listings.required_qualifications', 'like', $phrase)
+                    ->orWhere('job_listings.preferred_qualifications', 'like', $phrase);
+
+                if (count($tokens) > 1) {
+                    $q->orWhere(function ($sub) use ($tokens) {
+                        foreach ($tokens as $token) {
+                            $sub->where(function ($tokenQ) use ($token) {
+                                $t = "%{$token}%";
+                                $tokenQ->where('job_listings.title', 'like', $t)
+                                    ->orWhere('job_listings.company_name', 'like', $t)
+                                    ->orWhere('job_listings.location', 'like', $t)
+                                    ->orWhere('job_listings.required_qualifications', 'like', $t)
+                                    ->orWhere('job_listings.preferred_qualifications', 'like', $t);
+                            });
+                        }
+                    });
+                }
             });
         }
 

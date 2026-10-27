@@ -148,18 +148,20 @@ class AuthorizedFeedAdapter implements JobSourceAdapterInterface
         foreach ($this->feedCatalog as $item) {
             // Filter by keywords if provided
             if ($keywords) {
-                $searchCorpus = mb_strtolower(
-                    $item['title'].' '.$item['company_name'].' '.$item['description'].' '.implode(' ', $item['required_qualifications'])
+                $keywordTokens = array_values(array_filter(explode(' ', $keywords), fn($t) => strlen(trim($t)) > 0));
+                $primaryCorpus = mb_strtolower(
+                    $item['title'] . ' ' . $item['company_name'] . ' ' . implode(' ', $item['required_qualifications'])
                 );
-                $keywordTokens = array_filter(explode(' ', $keywords));
-                $matchesKeyword = false;
+
+                $allTokensMatch = true;
                 foreach ($keywordTokens as $token) {
-                    if (str_contains($searchCorpus, $token)) {
-                        $matchesKeyword = true;
+                    if (!str_contains($primaryCorpus, $token)) {
+                        $allTokensMatch = false;
                         break;
                     }
                 }
-                if (!$matchesKeyword) {
+
+                if (!$allTokensMatch) {
                     continue;
                 }
             }

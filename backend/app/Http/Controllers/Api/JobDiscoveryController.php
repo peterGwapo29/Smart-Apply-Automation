@@ -93,9 +93,14 @@ class JobDiscoveryController extends Controller
 
         $run = $this->discoveryService->executeRun($user, $criteria, $source);
 
+        $message = "Discovery run completed with {$run->new_listings} new job(s).";
+        if ($run->status === JobDiscoveryRun::STATUS_COMPLETED_WITH_ERRORS && !empty($run->error_message)) {
+            $message = $run->error_message;
+        }
+
         return response()->json([
             'success' => true,
-            'message' => "Discovery run completed with {$run->new_listings} new job(s).",
+            'message' => $message,
             'run' => $run,
         ], 201);
     }

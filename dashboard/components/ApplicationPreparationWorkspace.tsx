@@ -10,6 +10,12 @@ import {
   draftScreeningQuestions,
   updateScreeningQuestion,
   evaluateApplicationReadiness,
+  getApplicationExecutionWorkspace,
+  authorizeApplicationExecution,
+  verifyApplicationSubmission,
+  recordAmbiguousSubmission,
+  revalidateJobListing,
+  AssistanceWorkspaceResponse,
   ApplicationWorkspaceResponse,
   JobApplicationMaterialRecord,
   JobApplicationAnswerRecord,
@@ -31,7 +37,7 @@ export default function ApplicationPreparationWorkspace({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const [activeTab, setActiveTab] = useState<'materials' | 'questions' | 'resume' | 'readiness'>('materials');
+  const [activeTab, setActiveTab] = useState<'materials' | 'questions' | 'resume' | 'readiness' | 'execution'>('materials');
 
   // Materials form state
   const [coverLetter, setCoverLetter] = useState('');
@@ -40,6 +46,105 @@ export default function ApplicationPreparationWorkspace({
   // Questions input state
   const [newQuestion, setNewQuestion] = useState('');
   const [editingAnswers, setEditingAnswers] = useState<Record<number, string>>({});
+
+  // Phase 10: Execution & Assistance State
+  const [executionData, setExecutionData] = useState<AssistanceWorkspaceResponse | null>(null);
+  const [loadingExecution, setLoadingExecution] = useState(false);
+  const [revalidating, setRevalidating] = useState(false);
+  const [authorizing, setAuthorizing] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [userConfirmedAuth, setUserConfirmedAuth] = useState(false);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  const copyToClipboard = (text: string, key: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(null), 2000);
+  };
+
+  const loadExecutionWorkspace = async () => {
+    try {
+      setLoadingExecution(true);
+      const res = await getApplicationExecutionWorkspace(applicationId);
+      setExecutionData(res.data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load execution workspace');
+    } finally {
+      setLoadingExecution(false);
+    }
+  };
+
+  const handleRevalidateListing = async () => {
+    if (!executionData?.job?.id) return;
+    try {
+      setRevalidating(true);
+      setError(null);
+      const res = await revalidateJobListing(executionData.job.id, true);
+      setNotice(`Job availability revalidated: status is ${res.data.listing_status} (actionable: ${res.data.is_actionable ? 'Yes' : 'No'}).`);
+      await loadExecutionWorkspace();
+      await loadWorkspace();
+      onReadinessChange?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to revalidate job listing');
+    } finally {
+      setRevalidating(false);
+    }
+  };
+
+  const handleAuthorizeExecution = async () => {
+    try {
+      setAuthorizing(true);
+      setError(null);
+      const res = await authorizeApplicationExecution(applicationId);
+      setNotice('Candidate authorization recorded successfully. Execution is now authorized.');
+      await loadExecutionWorkspace();
+      await loadWorkspace();
+      onReadinessChange?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to authorize execution');
+    } finally {
+      setAuthorizing(false);
+    }
+  };
+
+  const handleVerifySubmission = async (
+    level: 'platform_confirmed' | 'user_confirmed' | 'failed' | 'ambiguous',
+    note?: string
+  ) => {
+    try {
+      setVerifying(true);
+      setError(null);
+      const res = await verifyApplicationSubmission(applicationId, {
+        verification_level: level,
+        evidence_type: level === 'platform_confirmed' ? 'platform_success_page' : 'candidate_manual_confirmation',
+        evidence_note: note || (level === 'platform_confirmed' ? 'Application confirmation page verified' : 'Candidate manually confirmed submission'),
+      });
+      setNotice(res.message);
+      await loadExecutionWorkspace();
+      await loadWorkspace();
+      onReadinessChange?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to verify submission');
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  const handleRecordAmbiguous = async () => {
+    try {
+      setVerifying(true);
+      setError(null);
+      const res = await recordAmbiguousSubmission(applicationId, 'Candidate reported ambiguous submission outcome. Auto-retry halted.');
+      setNotice(res.message);
+      await loadExecutionWorkspace();
+      await loadWorkspace();
+      onReadinessChange?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to record ambiguous submission');
+    } finally {
+      setVerifying(false);
+    }
+  };
 
   const loadWorkspace = async () => {
     try {
@@ -332,6 +437,23 @@ export default function ApplicationPreparationWorkspace({
           }`}
         >
           Readiness Checks ({blockingIssues.length} blockers)
+        </button>
+
+        <button
+          onClick={() => {
+            setActiveTab('execution');
+            loadExecutionWorkspace();
+          }}
+          className={`px-4 py-2.5 border-b-2 transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+            activeTab === 'execution'
+              ? 'border-blue-600 text-blue-600 dark:text-blue-400 font-bold'
+              : 'border-transparent text-slate-600 dark:text-[#CBD5E1] hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <span>🚀 Execution & Assistance</span>
+          {executionData?.can_execute && (
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+          )}
         </button>
       </div>
 
@@ -713,6 +835,378 @@ export default function ApplicationPreparationWorkspace({
                 ))}
               </div>
             </div>
+          )}
+        </div>
+      )}
+
+      {/* Tab 5: Execution & Assistance (Phase 10) */}
+      {activeTab === 'execution' && (
+        <div className="space-y-6">
+          {loadingExecution ? (
+            <div className="py-12 text-center text-xs text-slate-400 dark:text-slate-500 animate-pulse">
+              Loading execution workspace and revalidating checklist...
+            </div>
+          ) : !executionData ? (
+            <div className="py-12 text-center text-xs text-rose-500">
+              Could not load execution workspace. Please try refreshing the page.
+            </div>
+          ) : (
+            <>
+              {/* 1. Job Availability Status & Revalidation Header */}
+              <div className="p-4 rounded-xl border border-slate-200 dark:border-[#293548] bg-slate-50/70 dark:bg-[#172033]/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-sm text-slate-900 dark:text-white">
+                      {executionData.job.title}
+                    </span>
+                    <span className="text-xs text-slate-500 dark:text-[#94A3B8]">
+                      at {executionData.job.company_name || 'Unknown Company'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="text-slate-500 dark:text-[#94A3B8]">Status:</span>
+                    <span
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold ${
+                        executionData.job.is_actionable
+                          ? 'bg-emerald-100 text-emerald-900 dark:bg-emerald-950/70 dark:text-emerald-300'
+                          : 'bg-rose-100 text-rose-900 dark:bg-rose-950/70 dark:text-rose-300'
+                      }`}
+                    >
+                      {executionData.job.is_actionable ? '● Active & Actionable' : `⛔ Inactive (${executionData.job.listing_status})`}
+                    </span>
+                    {executionData.job.last_verified_at && (
+                      <span className="text-slate-400 dark:text-slate-500 text-[11px]">
+                        Last verified: {new Date(executionData.job.last_verified_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={handleRevalidateListing}
+                    disabled={revalidating}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-white dark:bg-[#1E293B] border border-slate-300 dark:border-[#293548] hover:bg-slate-100 dark:hover:bg-[#293548] text-slate-700 dark:text-[#CBD5E1] transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                  >
+                    <span>{revalidating ? '🔄 Checking...' : '🔄 Revalidate Availability'}</span>
+                  </button>
+
+                  <a
+                    href={executionData.job.canonical_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white transition-colors flex items-center gap-1"
+                  >
+                    Open Platform Job ↗
+                  </a>
+                </div>
+              </div>
+
+              {!executionData.job.is_actionable && (
+                <div className="p-3.5 rounded-xl border border-rose-300 dark:border-rose-900 bg-rose-50/70 dark:bg-rose-950/40 text-xs text-rose-900 dark:text-rose-200 flex items-start gap-2.5">
+                  <span className="text-base leading-none">⛔</span>
+                  <div>
+                    <div className="font-bold">Application Execution Blocked</div>
+                    <div className="mt-0.5 leading-relaxed">
+                      This job listing is no longer active (status: {executionData.job.listing_status}). Applications cannot be executed against closed, expired, or withdrawn job postings.
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 2. Execution Readiness Checklist */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-slate-800 dark:text-[#CBD5E1] uppercase tracking-wider">
+                    Execution Readiness Checklist
+                  </h4>
+                  <span className="text-xs text-slate-500 dark:text-[#94A3B8]">
+                    {executionData.checklist.filter((i) => i.completed).length} / {executionData.checklist.length} satisfied
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {executionData.checklist.map((item) => (
+                    <div
+                      key={item.id}
+                      className={`p-3 rounded-lg border text-xs flex items-center justify-between gap-2 ${
+                        item.completed
+                          ? 'border-emerald-200 dark:border-emerald-800/60 bg-emerald-50/40 dark:bg-emerald-950/20 text-emerald-950 dark:text-emerald-200'
+                          : 'border-amber-200 dark:border-amber-800/60 bg-amber-50/40 dark:bg-amber-950/20 text-amber-950 dark:text-amber-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-sm">
+                          {item.completed ? '✓' : '○'}
+                        </span>
+                        <div className="space-y-0.5">
+                          <div className="font-medium">{item.title}</div>
+                          {item.detail && (
+                            <div className="text-[11px] opacity-75">{item.detail}</div>
+                          )}
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded bg-white/60 dark:bg-black/30 shrink-0">
+                        {item.completed ? 'Ready' : 'Pending'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 3. 1-Click Copy Assistance Kit */}
+              <div className="space-y-3 border-t border-slate-200 dark:border-[#293548] pt-5">
+                <div className="space-y-0.5">
+                  <h4 className="text-xs font-bold text-slate-800 dark:text-[#CBD5E1] uppercase tracking-wider">
+                    1-Click Application Assistance Kit
+                  </h4>
+                  <p className="text-xs text-slate-500 dark:text-[#94A3B8]">
+                    Copy verified application answers and tailored text directly to your clipboard for browser form filling.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+                  <button
+                    onClick={() =>
+                      copyToClipboard(executionData.materials.cover_letter || '', 'cover_letter')
+                    }
+                    disabled={!executionData.materials.cover_letter}
+                    className="p-3 rounded-lg border border-slate-200 dark:border-[#293548] bg-white dark:bg-[#111827] hover:bg-slate-50 dark:hover:bg-[#1E293B] text-left transition-colors flex items-center justify-between cursor-pointer disabled:opacity-40"
+                  >
+                    <div>
+                      <div className="font-semibold text-xs text-slate-900 dark:text-white">
+                        Cover Letter
+                      </div>
+                      <div className="text-[11px] text-slate-500 dark:text-[#94A3B8]">
+                        {executionData.materials.cover_letter ? 'Tailored & ready' : 'Not generated'}
+                      </div>
+                    </div>
+                    <span className="text-xs font-semibold text-blue-600 dark:text-blue-400">
+                      {copiedKey === 'cover_letter' ? 'Copied! ✓' : 'Copy'}
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={() =>
+                      copyToClipboard(executionData.materials.introduction || '', 'introduction')
+                    }
+                    disabled={!executionData.materials.introduction}
+                    className="p-3 rounded-lg border border-slate-200 dark:border-[#293548] bg-white dark:bg-[#111827] hover:bg-slate-50 dark:hover:bg-[#1E293B] text-left transition-colors flex items-center justify-between cursor-pointer disabled:opacity-40"
+                  >
+                    <div>
+                      <div className="font-semibold text-xs text-slate-900 dark:text-white">
+                        Introduction / Summary
+                      </div>
+                      <div className="text-[11px] text-slate-500 dark:text-[#94A3B8]">
+                        Short pitch for forms
+                      </div>
+                    </div>
+                    <span className="text-xs font-semibold text-blue-600 dark:text-blue-400">
+                      {copiedKey === 'introduction' ? 'Copied! ✓' : 'Copy'}
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      const allAnswers = executionData.screening_answers
+                        .map((a, i) => `Q${i + 1}: ${a.question}\nA: ${a.draft_answer || 'N/A'}`)
+                        .join('\n\n');
+                      copyToClipboard(allAnswers, 'all_answers');
+                    }}
+                    disabled={executionData.screening_answers.length === 0}
+                    className="p-3 rounded-lg border border-slate-200 dark:border-[#293548] bg-white dark:bg-[#111827] hover:bg-slate-50 dark:hover:bg-[#1E293B] text-left transition-colors flex items-center justify-between cursor-pointer disabled:opacity-40"
+                  >
+                    <div>
+                      <div className="font-semibold text-xs text-slate-900 dark:text-white">
+                        Screening Answers
+                      </div>
+                      <div className="text-[11px] text-slate-500 dark:text-[#94A3B8]">
+                        {executionData.screening_answers.length} verified answer(s)
+                      </div>
+                    </div>
+                    <span className="text-xs font-semibold text-blue-600 dark:text-blue-400">
+                      {copiedKey === 'all_answers' ? 'Copied! ✓' : 'Copy All'}
+                    </span>
+                  </button>
+                </div>
+
+                {/* Individual Screening Answer copy pills */}
+                {executionData.screening_answers.length > 0 && (
+                  <div className="space-y-2 pt-2">
+                    <div className="text-[11px] font-semibold text-slate-600 dark:text-[#CBD5E1]">
+                      Individual Question Answers:
+                    </div>
+                    <div className="space-y-1.5">
+                      {executionData.screening_answers.map((ans, idx) => (
+                        <div
+                          key={ans.id}
+                          className="p-2.5 rounded-lg border border-slate-200 dark:border-[#293548] bg-slate-50/50 dark:bg-[#172033]/40 flex items-center justify-between gap-3 text-xs"
+                        >
+                          <div className="truncate flex-1">
+                            <span className="font-medium text-slate-900 dark:text-[#F3F4F6]">
+                              Q{idx + 1}: {ans.question}
+                            </span>
+                            <div className="text-slate-500 dark:text-[#94A3B8] truncate mt-0.5">
+                              {ans.draft_answer || '(No answer drafted)'}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => copyToClipboard(ans.draft_answer || '', `ans_${ans.id}`)}
+                            disabled={!ans.draft_answer}
+                            className="px-2.5 py-1 rounded bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold shrink-0 cursor-pointer disabled:opacity-30"
+                          >
+                            {copiedKey === `ans_${ans.id}` ? 'Copied! ✓' : 'Copy'}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* 4. Candidate Explicit Authorization Guard */}
+              <div className="space-y-3 border-t border-slate-200 dark:border-[#293548] pt-5">
+                <div className="space-y-0.5">
+                  <h4 className="text-xs font-bold text-slate-800 dark:text-[#CBD5E1] uppercase tracking-wider">
+                    Candidate Execution Authorization
+                  </h4>
+                  <p className="text-xs text-slate-500 dark:text-[#94A3B8]">
+                    Consequential application submissions require deliberate candidate consent.
+                  </p>
+                </div>
+
+                {executionData.submission.authorized_at ? (
+                  <div className="p-3.5 rounded-xl border border-emerald-300 dark:border-emerald-800 bg-emerald-50/70 dark:bg-emerald-950/40 text-xs text-emerald-900 dark:text-emerald-200 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base leading-none">✓</span>
+                      <div>
+                        <span className="font-bold">Application Execution Authorized</span>
+                        <div className="text-[11px] opacity-80 mt-0.5">
+                          Authorized on {new Date(executionData.submission.authorized_at).toLocaleString()}
+                        </div>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-200 dark:bg-emerald-900 text-emerald-900 dark:text-emerald-100">
+                      Authorized
+                    </span>
+                  </div>
+                ) : (
+                  <div className="p-4 rounded-xl border border-amber-300 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/30 space-y-3">
+                    <label className="flex items-start gap-2.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={userConfirmedAuth}
+                        onChange={(e) => setUserConfirmedAuth(e.target.checked)}
+                        className="mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-xs text-slate-800 dark:text-[#CBD5E1] leading-relaxed">
+                        I have thoroughly reviewed the selected résumé, tailored cover letter, and screening question answers. I confirm that all details are accurate, and I explicitly authorize executing the application for <strong>{executionData.job.title}</strong> at <strong>{executionData.job.company_name}</strong>.
+                      </span>
+                    </label>
+
+                    <div className="flex items-center justify-end">
+                      <button
+                        onClick={handleAuthorizeExecution}
+                        disabled={authorizing || !userConfirmedAuth || !executionData.job.is_actionable}
+                        className="px-4 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white transition-colors cursor-pointer disabled:opacity-40 flex items-center gap-1.5"
+                      >
+                        <span>{authorizing ? 'Recording Authorization...' : 'Grant Application Authorization'}</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* 5. Consequential Submission Outcome Verification */}
+              <div className="space-y-3 border-t border-slate-200 dark:border-[#293548] pt-5">
+                <div className="space-y-0.5">
+                  <h4 className="text-xs font-bold text-slate-800 dark:text-[#CBD5E1] uppercase tracking-wider">
+                    Submission Outcome & Verification
+                  </h4>
+                  <p className="text-xs text-slate-500 dark:text-[#94A3B8]">
+                    Record submission evidence. Ambiguous submissions are held safely in confirmation required state without automatic retries.
+                  </p>
+                </div>
+
+                {executionData.submission.submitted_at ? (
+                  <div className="p-4 rounded-xl border border-cyan-300 dark:border-cyan-800 bg-cyan-50/60 dark:bg-cyan-950/40 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-base leading-none">🎉</span>
+                        <span className="font-bold text-sm text-cyan-950 dark:text-cyan-200">
+                          Application Submitted
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-cyan-200 dark:bg-cyan-900 text-cyan-900 dark:text-cyan-100">
+                        {executionData.submission.level || 'Submitted'}
+                      </span>
+                    </div>
+                    <div className="text-xs text-cyan-900/80 dark:text-cyan-200/80 space-y-0.5">
+                      <div>Submitted at: {new Date(executionData.submission.submitted_at).toLocaleString()}</div>
+                      {executionData.submission.evidence_note && (
+                        <div>Evidence: {executionData.submission.evidence_note}</div>
+                      )}
+                    </div>
+                  </div>
+                ) : executionData.status === 'confirmation_required' ? (
+                  <div className="p-4 rounded-xl border border-amber-300 dark:border-amber-800 bg-amber-50/70 dark:bg-amber-950/40 space-y-3">
+                    <div className="flex items-start gap-2">
+                      <span className="text-base leading-none">⚠️</span>
+                      <div className="space-y-1">
+                        <div className="font-bold text-xs text-amber-950 dark:text-amber-200">
+                          Submission Outcome Ambiguous (Auto-Retry Paused)
+                        </div>
+                        <div className="text-xs text-amber-900 dark:text-amber-300 leading-relaxed">
+                          A previous submission attempt encountered an uncertain outcome or browser timeout. To prevent duplicate job applications, automated retries are permanently paused until you confirm the actual state.
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                      <button
+                        onClick={() => handleVerifySubmission('user_confirmed', 'Candidate manually confirmed application was successfully submitted')}
+                        disabled={verifying}
+                        className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
+                      >
+                        Confirm It Was Submitted ✓
+                      </button>
+                      <button
+                        onClick={() => handleVerifySubmission('failed', 'Submission failed or was canceled on platform')}
+                        disabled={verifying}
+                        className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white cursor-pointer"
+                      >
+                        Mark as Failed ✕
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <button
+                      onClick={() => handleVerifySubmission('platform_confirmed')}
+                      disabled={verifying || !executionData.submission.authorized_at || !executionData.job.is_actionable}
+                      className="px-3.5 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white transition-colors cursor-pointer disabled:opacity-40 flex items-center gap-1.5"
+                    >
+                      <span>✓ Platform Success Page Detected</span>
+                    </button>
+
+                    <button
+                      onClick={() => handleVerifySubmission('user_confirmed')}
+                      disabled={verifying || !executionData.submission.authorized_at || !executionData.job.is_actionable}
+                      className="px-3.5 py-2 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white transition-colors cursor-pointer disabled:opacity-40 flex items-center gap-1.5"
+                    >
+                      <span>✓ Confirm Manual Submission</span>
+                    </button>
+
+                    <button
+                      onClick={handleRecordAmbiguous}
+                      disabled={verifying}
+                      className="px-3.5 py-2 rounded-lg text-xs font-semibold border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/60 transition-colors cursor-pointer disabled:opacity-40"
+                    >
+                      <span>⚠️ Report Ambiguous / Timeout</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            </>
           )}
         </div>
       )}

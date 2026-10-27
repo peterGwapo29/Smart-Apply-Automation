@@ -5,6 +5,8 @@ use App\Http\Controllers\Api\CandidateProfileController;
 use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\Api\JobApplicationController;
 use App\Http\Controllers\Api\JobApplicationPreparationController;
+use App\Http\Controllers\Api\JobApplicationExecutionController;
+use App\Http\Controllers\Api\PlatformAccountController;
 use App\Http\Controllers\Api\JobDiscoveryController;
 use App\Http\Controllers\Api\JobListingController;
 use App\Http\Controllers\Api\JobMatchingController;
@@ -56,6 +58,7 @@ Route::post('/jobs/{id}/qualification/recalculate', [JobQualificationController:
 
 // Job Listings & Ingestion (Phase 3 & Phase 5)
 Route::get('/jobs/check', [JobListingController::class, 'checkUrl']);
+Route::get('/jobs/summary', [JobListingController::class, 'summary']);
 Route::get('/jobs/dashboard-summary', [JobListingController::class, 'summary']);
 Route::get('/jobs', [JobListingController::class, 'index']);
 Route::post('/jobs/import', [JobListingController::class, 'import']);
@@ -93,6 +96,17 @@ Route::get('/discovery/runs', [JobDiscoveryController::class, 'runs']);
 Route::post('/discovery/runs', [JobDiscoveryController::class, 'triggerRun']);
 Route::get('/discovery/runs/{id}', [JobDiscoveryController::class, 'showRun']);
 Route::post('/discovery/runs/{id}/cancel', [JobDiscoveryController::class, 'cancelRun']);
+
+// Phase 10: Platform Accounts, Revalidation, Execution & Assistance
+Route::post('/jobs/revalidate-all', [JobApplicationExecutionController::class, 'revalidateAll']);
+Route::post('/jobs/{id}/revalidate', [JobApplicationExecutionController::class, 'revalidate']);
+Route::get('/platform-accounts', [PlatformAccountController::class, 'index']);
+Route::put('/platform-accounts/{platform}', [PlatformAccountController::class, 'update']);
+Route::get('/applications/{id}/execution-workspace', [JobApplicationExecutionController::class, 'workspace']);
+Route::post('/applications/{id}/authorize-execution', [JobApplicationExecutionController::class, 'authorizeExecution']);
+Route::post('/applications/{id}/verify-submission', [JobApplicationExecutionController::class, 'verifySubmission']);
+Route::post('/applications/{id}/record-ambiguous', [JobApplicationExecutionController::class, 'recordAmbiguous']);
+
 
 
 

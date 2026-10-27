@@ -20,6 +20,12 @@ class JobApplication extends Model
     public const STATUS_FAILED = 'failed';
     public const STATUS_CONFIRMATION_REQUIRED = 'confirmation_required';
 
+    public const VERIFICATION_PLATFORM_CONFIRMED = 'platform_confirmed';
+    public const VERIFICATION_USER_CONFIRMED = 'user_confirmed';
+    public const VERIFICATION_UNCONFIRMED = 'unconfirmed';
+    public const VERIFICATION_AMBIGUOUS = 'ambiguous';
+    public const VERIFICATION_FAILED = 'failed';
+
     public const ALL_STATUSES = [
         self::STATUS_QUEUED,
         self::STATUS_PREPARING,
@@ -37,6 +43,9 @@ class JobApplication extends Model
         'candidate_profile_id',
         'job_listing_id',
         'status',
+        'submission_verification_level',
+        'submission_evidence_type',
+        'submission_evidence_note',
         'idempotency_key',
         'attempt_count',
         'max_retries',
@@ -46,6 +55,7 @@ class JobApplication extends Model
         'last_processed_at',
         'preparation_started_at',
         'ready_at',
+        'authorized_at',
         'submitted_at',
         'metadata',
     ];
@@ -59,6 +69,7 @@ class JobApplication extends Model
             'last_processed_at' => 'datetime',
             'preparation_started_at' => 'datetime',
             'ready_at' => 'datetime',
+            'authorized_at' => 'datetime',
             'submitted_at' => 'datetime',
             'metadata' => 'array',
         ];

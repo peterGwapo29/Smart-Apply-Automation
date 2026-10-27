@@ -450,6 +450,11 @@ export interface JobListingRecord {
   extraction_status: string;
   content_hash: string;
   review_status: string;
+  listing_status?: 'active' | 'expired' | 'closed' | 'withdrawn' | 'unavailable' | 'unknown';
+  expires_at?: string | null;
+  last_verified_at?: string | null;
+  verification_source?: string | null;
+  is_actionable?: boolean;
   effective_review_status?: ReviewWorkflowStatus;
   is_bookmarked?: boolean;
   is_match_stale?: boolean;
@@ -561,6 +566,7 @@ export async function getJobListings(params?: JobListingsQueryParams): Promise<J
   const response = await fetch(url, {
     method: 'GET',
     headers: getHeaders(),
+    cache: 'no-store',
   });
 
   const data = await response.json();
@@ -1511,6 +1517,7 @@ export async function getPrioritizedJobs(params?: {
 
   const response = await fetch(`${baseUrl}/jobs/prioritized?${searchParams.toString()}`, {
     headers: getHeaders(),
+    cache: 'no-store',
   });
 
   const data = await response.json();
@@ -1564,4 +1571,269 @@ export async function recalculateJobQualification(jobId: number): Promise<JobQua
   }
 
   return data.data;
+}
+
+
+// ==========================================
+// Phase 10: Platform Accounts, Revalidation, Execution & Assistance
+// ==========================================
+
+export interface PlatformAccountRecord {
+  platform: string;
+  display_name: string;
+  access_status: 'setup_required' | 'access_verified' | 'reauthentication_required' | 'integration_connected';
+  supported_capability: 'browser_assisted' | 'manual_only' | 'authorized_integration';
+  is_verified: boolean;
+  verified_username_or_email: string | null;
+  last_verified_at: string | null;
+  registration_url: string | null;
+  login_url: string | null;
+}
+
+export interface RevalidateListingResponse {
+  job_id: number;
+  listing_status: 'active' | 'expired' | 'closed' | 'withdrawn' | 'unavailable' | 'unknown';
+  is_actionable: boolean;
+  is_fresh: boolean;
+  expires_at: string | null;
+  last_verified_at: string | null;
+  verification_source: string;
+}
+
+export interface AssistanceWorkspaceResponse {
+  application_id: number;
+  status: string;
+  job: {
+    id: number;
+    title: string;
+    company_name: string | null;
+    location: string | null;
+    canonical_url: string;
+    source_platform: string;
+    listing_status: string;
+    expires_at: string | null;
+    last_verified_at: string | null;
+    is_actionable: boolean;
+  };
+  platform_account: {
+    platform: string;
+    access_status: string;
+    supported_capability: string;
+    is_verified: boolean;
+    last_verified_at: string | null;
+  };
+  materials: {
+    selected_resume: {
+      id: number;
+      original_filename: string;
+    } | null;
+    cover_letter: string | null;
+    introduction: string | null;
+  };
+  screening_answers: Array<{
+    id: number;
+    question: string;
+    draft_answer: string | null;
+    confidence: string;
+    requires_review: boolean;
+    category?: string | null;
+  }>;
+  checklist: Array<{
+    id: string;
+    title: string;
+    completed: boolean;
+    required: boolean;
+    detail?: string | null;
+  }>;
+  can_execute: boolean;
+  submission: {
+    level: string | null;
+    evidence_type: string | null;
+    evidence_note: string | null;
+    authorized_at: string | null;
+    submitted_at: string | null;
+  };
+}
+
+export interface PlatformAccountListResponse {
+  status: string;
+  accounts: PlatformAccountRecord[];
+  data: PlatformAccountRecord[];
+}
+
+export interface PlatformAccountUpdateResponse {
+  status: string;
+  message?: string;
+  account: PlatformAccountRecord;
+  data: PlatformAccountRecord;
+}
+
+export async function getPlatformAccounts(): Promise<PlatformAccountListResponse> {
+  const baseUrl = getApiBaseUrl();
+  const response = await fetch(`${baseUrl}/platform-accounts`, {
+    headers: getHeaders(),
+    cache: 'no-store',
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to fetch platform accounts.');
+  }
+
+  const rawList = Array.isArray(data.data)
+    ? data.data
+    : Array.isArray(data.accounts)
+    ? data.accounts
+    : [];
+
+  return {
+    status: data.status || 'success',
+    accounts: rawList,
+    data: rawList,
+  };
+}
+
+export async function updatePlatformAccount(
+  platform: string,
+  payload: {
+    access_status?: string;
+    verified_username_or_email?: string | null;
+    supported_capability?: string;
+  }
+): Promise<PlatformAccountUpdateResponse> {
+  const baseUrl = getApiBaseUrl();
+  const response = await fetch(`${baseUrl}/platform-accounts/${platform}`, {
+    method: 'PUT',
+    headers: {
+      ...getHeaders(),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to update platform account.');
+  }
+
+  const rawAccount = data.data || data.account;
+
+  return {
+    status: data.status || 'success',
+    message: data.message,
+    account: rawAccount,
+    data: rawAccount,
+  };
+}
+
+export async function revalidateAllJobListings(forceFresh: boolean = true): Promise<{ status: string; message: string; data: RevalidateListingResponse[] }> {
+  const baseUrl = getApiBaseUrl();
+  const response = await fetch(`${baseUrl}/jobs/revalidate-all`, {
+    method: 'POST',
+    headers: {
+      ...getHeaders(),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ force_fresh: forceFresh }),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to revalidate all job listings.');
+  }
+
+  return data;
+}
+
+export async function revalidateJobListing(jobId: number, forceFresh: boolean = false): Promise<{ status: string; data: RevalidateListingResponse }> {
+  const baseUrl = getApiBaseUrl();
+  const response = await fetch(`${baseUrl}/jobs/${jobId}/revalidate`, {
+    method: 'POST',
+    headers: {
+      ...getHeaders(),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ force_fresh: forceFresh }),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to revalidate job listing.');
+  }
+
+  return data;
+}
+
+export async function getApplicationExecutionWorkspace(applicationId: number): Promise<{ status: string; data: AssistanceWorkspaceResponse }> {
+  const baseUrl = getApiBaseUrl();
+  const response = await fetch(`${baseUrl}/applications/${applicationId}/execution-workspace`, {
+    headers: getHeaders(),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to fetch execution workspace.');
+  }
+
+  return data;
+}
+
+export async function authorizeApplicationExecution(applicationId: number): Promise<{ status: string; message: string; authorized_at: string }> {
+  const baseUrl = getApiBaseUrl();
+  const response = await fetch(`${baseUrl}/applications/${applicationId}/authorize-execution`, {
+    method: 'POST',
+    headers: getHeaders(),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to authorize application execution.');
+  }
+
+  return data;
+}
+
+export async function verifyApplicationSubmission(
+  applicationId: number,
+  payload: {
+    verification_level: 'platform_confirmed' | 'user_confirmed' | 'ambiguous' | 'failed';
+    evidence_type?: string;
+    evidence_note?: string;
+  }
+): Promise<{ status: string; message: string; application: any }> {
+  const baseUrl = getApiBaseUrl();
+  const response = await fetch(`${baseUrl}/applications/${applicationId}/verify-submission`, {
+    method: 'POST',
+    headers: {
+      ...getHeaders(),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to verify application submission.');
+  }
+
+  return data;
+}
+
+export async function recordAmbiguousSubmission(applicationId: number, reason?: string): Promise<{ status: string; message: string; status_code: string }> {
+  const baseUrl = getApiBaseUrl();
+  const response = await fetch(`${baseUrl}/applications/${applicationId}/record-ambiguous`, {
+    method: 'POST',
+    headers: {
+      ...getHeaders(),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ reason }),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to record ambiguous submission.');
+  }
+
+  return data;
 }

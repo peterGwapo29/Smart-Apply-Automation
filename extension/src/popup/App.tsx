@@ -1,5 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { checkApiHealth, checkJobListing, bookmarkJob, unbookmarkJob, updateJobReview } from '../services/api';
+import {
+  checkApiHealth,
+  checkJobListing,
+  bookmarkJob,
+  unbookmarkJob,
+  updateJobReview,
+  revalidateJobListing,
+  getApplicationExecutionWorkspace,
+} from '../services/api';
 import { detectActiveTabListing } from '../services/tabDetector';
 import { ConnectionState, HealthResponse, ActiveTabDetection, JobCheckResponse } from '../types';
 
@@ -21,6 +29,20 @@ export const App: React.FC = () => {
   const [reviewStatus, setReviewStatus] = useState<string>('new');
   const [workflowBusy, setWorkflowBusy] = useState<boolean>(false);
   const [workflowFeedback, setWorkflowFeedback] = useState<string | null>(null);
+
+  // Phase 10: Active Validation & Browser Assistance
+  const [revalidating, setRevalidating] = useState<boolean>(false);
+  const [revalidateMsg, setRevalidateMsg] = useState<string | null>(null);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [execWorkspace, setExecWorkspace] = useState<any | null>(null);
+
+  useEffect(() => {
+    if (listingMatch?.job?.application?.id) {
+      getApplicationExecutionWorkspace(listingMatch.job.application.id)
+        .then((res) => setExecWorkspace(res.data))
+        .catch(() => {});
+    }
+  }, [listingMatch?.job?.application?.id]);
 
   useEffect(() => {
     async function inspectActiveTab() {
@@ -98,6 +120,30 @@ export const App: React.FC = () => {
     } finally {
       setWorkflowBusy(false);
     }
+  };
+
+  const handleRevalidate = async () => {
+    if (!listingMatch?.job?.id) return;
+    try {
+      setRevalidating(true);
+      const res = await revalidateJobListing(listingMatch.job.id, true);
+      setRevalidateMsg(`Availability: ${res.data.listing_status} (actionable: ${res.data.is_actionable ? 'Yes' : 'No'})`);
+      if (listingMatch.job) {
+        listingMatch.job.listing_status = res.data.listing_status as any;
+        listingMatch.job.is_actionable = res.data.is_actionable;
+      }
+      setTimeout(() => setRevalidateMsg(null), 3500);
+    } catch (err: unknown) {
+      setRevalidateMsg(err instanceof Error ? err.message : 'Revalidation failed');
+    } finally {
+      setRevalidating(false);
+    }
+  };
+
+  const handleCopy = (text: string, key: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(null), 2000);
   };
 
   const handleOpenDashboardImport = () => {
@@ -188,6 +234,15 @@ export const App: React.FC = () => {
     return <span className={`badge-tag ${badgeClass}`}>{label}</span>;
   };
 
+  const renderListingStatusBadge = (status?: string) => {
+    if (!status || status === 'active') return null;
+    return (
+      <span className="badge-tag badge-rose">
+        ⛔ {status.toUpperCase()}
+      </span>
+    );
+  };
+
   const renderApplicationBadge = (status?: string) => {
     if (!status) return null;
     let badgeClass = 'badge-slate';
@@ -212,7 +267,7 @@ export const App: React.FC = () => {
       <div className="popup-header">
         <div>
           <h1 className="popup-title">JobStreet Quick Apply</h1>
-          <span className="popup-badge">Manifest V3 • Phase 9</span>
+          <span className="popup-badge">Manifest V3 • Phase 10</span>
         </div>
       </div>
 
@@ -275,11 +330,94 @@ export const App: React.FC = () => {
                         {renderMatchBadge(listingMatch.job.latest_match)}
                         {renderPriorityBadge(listingMatch.job.latest_match)}
                         {renderApplicationBadge(listingMatch.job.application?.status)}
+                        {renderListingStatusBadge(listingMatch.job.listing_status)}
                       </div>
                     ) : (
                       <div style={{ color: '#2563eb', marginTop: 4, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
                         <span>✓ Saved (Match score ready to calculate)</span>
                         {renderApplicationBadge(listingMatch.job.application?.status)}
+                        {renderListingStatusBadge(listingMatch.job.listing_status)}
+                      </div>
+                    )}
+
+                    {/* Active Listing Validation Notice */}
+                    {listingMatch.job.listing_status && listingMatch.job.listing_status !== 'active' && (
+                      <div style={{ marginTop: 6, padding: '4px 8px', borderRadius: 4, backgroundColor: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', fontSize: 11, fontWeight: 600 }}>
+                        ⛔ Job is no longer active ({listingMatch.job.listing_status}). Consequential application execution blocked.
+                      </div>
+                    )}
+
+                    {/* Revalidate Button & Message */}
+                    <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: 11, color: '#64748b' }}>
+                        Availability: <strong>{listingMatch.job.listing_status || 'active'}</strong>
+                      </span>
+                      <button
+                        onClick={handleRevalidate}
+                        disabled={revalidating}
+                        style={{
+                          fontSize: 10,
+                          padding: '2px 8px',
+                          borderRadius: 4,
+                          border: '1px solid #cbd5e1',
+                          backgroundColor: '#f8fafc',
+                          cursor: 'pointer',
+                          fontWeight: 600,
+                          color: '#0f172a',
+                        }}
+                      >
+                        {revalidating ? 'Checking...' : '🔄 Revalidate'}
+                      </button>
+                    </div>
+
+                    {revalidateMsg && (
+                      <div style={{ fontSize: 11, color: '#0284c7', marginTop: 4, fontWeight: 500 }}>
+                        {revalidateMsg}
+                      </div>
+                    )}
+
+                    {/* 1-Click Application Assistance Kit */}
+                    {execWorkspace?.materials && (
+                      <div style={{ marginTop: 8, padding: '6px 8px', borderRadius: 6, backgroundColor: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: '#0f172a', marginBottom: 4 }}>
+                          🚀 1-Click Browser Assistance
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          {execWorkspace.materials.cover_letter && (
+                            <button
+                              onClick={() => handleCopy(execWorkspace.materials.cover_letter, 'cl')}
+                              style={{
+                                fontSize: 10,
+                                padding: '3px 8px',
+                                borderRadius: 4,
+                                border: '1px solid #cbd5e1',
+                                backgroundColor: '#ffffff',
+                                cursor: 'pointer',
+                                fontWeight: 600,
+                                color: '#1e293b',
+                              }}
+                            >
+                              {copiedKey === 'cl' ? 'Copied! ✓' : '📋 Copy Cover Letter'}
+                            </button>
+                          )}
+                          {execWorkspace.materials.introduction && (
+                            <button
+                              onClick={() => handleCopy(execWorkspace.materials.introduction, 'intro')}
+                              style={{
+                                fontSize: 10,
+                                padding: '3px 8px',
+                                borderRadius: 4,
+                                border: '1px solid #cbd5e1',
+                                backgroundColor: '#ffffff',
+                                cursor: 'pointer',
+                                fontWeight: 600,
+                                color: '#1e293b',
+                              }}
+                            >
+                              {copiedKey === 'intro' ? 'Copied! ✓' : '📋 Copy Intro'}
+                            </button>
+                          )}
+                        </div>
                       </div>
                     )}
 

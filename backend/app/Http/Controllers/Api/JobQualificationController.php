@@ -61,13 +61,48 @@ class JobQualificationController extends Controller
         }
 
         // Filter by source platform
-        if ($request->filled('source')) {
-            $query->where('job_listings.source', $request->query('source'));
+        if ($request->filled('source') || $request->filled('source_platform')) {
+            $sourcePlatform = $request->query('source_platform', $request->query('source'));
+            $query->where('job_listings.source_platform', $sourcePlatform);
         }
 
-        // Filter by listing status (active by default if requested)
-        if ($request->query('active_only') === 'true' || $request->query('active_only') === '1') {
-            $query->whereNotIn('job_listings.status', ['closed', 'expired']);
+        // Search in title, company, location, skills, qualifications
+        if ($request->filled('search')) {
+            $rawSearch = trim($request->input('search'));
+            $tokens = array_values(array_filter(explode(' ', $rawSearch), fn($t) => strlen(trim($t)) > 0));
+
+            $query->where(function ($q) use ($rawSearch, $tokens) {
+                $phrase = "%{$rawSearch}%";
+                $q->where('job_listings.title', 'like', $phrase)
+                    ->orWhere('job_listings.company_name', 'like', $phrase)
+                    ->orWhere('job_listings.location', 'like', $phrase)
+                    ->orWhere('job_listings.required_qualifications', 'like', $phrase)
+                    ->orWhere('job_listings.preferred_qualifications', 'like', $phrase);
+
+                if (count($tokens) > 1) {
+                    $q->orWhere(function ($sub) use ($tokens) {
+                        foreach ($tokens as $token) {
+                            $sub->where(function ($tokenQ) use ($token) {
+                                $t = "%{$token}%";
+                                $tokenQ->where('job_listings.title', 'like', $t)
+                                    ->orWhere('job_listings.company_name', 'like', $t)
+                                    ->orWhere('job_listings.location', 'like', $t)
+                                    ->orWhere('job_listings.required_qualifications', 'like', $t)
+                                    ->orWhere('job_listings.preferred_qualifications', 'like', $t);
+                            });
+                        }
+                    });
+                }
+            });
+        }
+
+        // Phase 10: Prioritized recommendations enforce active-only listings by default
+        if (!$request->boolean('include_inactive')) {
+            $query->where('job_listings.listing_status', JobListing::STATUS_ACTIVE)
+                ->where(function ($sub) {
+                    $sub->whereNull('job_listings.expires_at')
+                        ->orWhere('job_listings.expires_at', '>', now());
+                });
         }
 
         // Sort by priority_score DESC, then match_score DESC, then id DESC (deterministic tie-breaking)
@@ -77,6 +112,14 @@ class JobQualificationController extends Controller
 
         $perPage = min(50, max(5, intval($request->query('per_page', 15))));
         $paginator = $query->paginate($perPage);
+
+        $baseTierQuery = JobMatch::join('job_listings', 'job_matches.job_listing_id', '=', 'job_listings.id')
+            ->where('job_matches.user_id', $user->id)
+            ->where('job_listings.listing_status', JobListing::STATUS_ACTIVE)
+            ->where(function ($sub) {
+                $sub->whereNull('job_listings.expires_at')
+                    ->orWhere('job_listings.expires_at', '>', now());
+            });
 
         return response()->json([
             'status' => 'success',
@@ -89,12 +132,12 @@ class JobQualificationController extends Controller
             ],
             'meta' => [
                 'tier_counts' => [
-                    'top_priority' => JobMatch::where('user_id', $user->id)->where('priority_tier', 'top_priority')->count(),
-                    'high_priority' => JobMatch::where('user_id', $user->id)->where('priority_tier', 'high_priority')->count(),
-                    'medium_priority' => JobMatch::where('user_id', $user->id)->where('priority_tier', 'medium_priority')->count(),
-                    'low_priority' => JobMatch::where('user_id', $user->id)->where('priority_tier', 'low_priority')->count(),
-                    'requires_review' => JobMatch::where('user_id', $user->id)->where('priority_tier', 'requires_review')->count(),
-                    'not_recommended' => JobMatch::where('user_id', $user->id)->where('priority_tier', 'not_recommended')->count(),
+                    'top_priority' => (clone $baseTierQuery)->where('job_matches.priority_tier', 'top_priority')->count(),
+                    'high_priority' => (clone $baseTierQuery)->where('job_matches.priority_tier', 'high_priority')->count(),
+                    'medium_priority' => (clone $baseTierQuery)->where('job_matches.priority_tier', 'medium_priority')->count(),
+                    'low_priority' => (clone $baseTierQuery)->where('job_matches.priority_tier', 'low_priority')->count(),
+                    'requires_review' => (clone $baseTierQuery)->where('job_matches.priority_tier', 'requires_review')->count(),
+                    'not_recommended' => (clone $baseTierQuery)->where('job_matches.priority_tier', 'not_recommended')->count(),
                 ],
             ],
         ]);

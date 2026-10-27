@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -11,6 +13,22 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 class JobListing extends Model
 {
     use HasFactory;
+
+    public const STATUS_ACTIVE = 'active';
+    public const STATUS_EXPIRED = 'expired';
+    public const STATUS_CLOSED = 'closed';
+    public const STATUS_WITHDRAWN = 'withdrawn';
+    public const STATUS_UNAVAILABLE = 'unavailable';
+    public const STATUS_UNKNOWN = 'unknown';
+
+    public const ALL_STATUSES = [
+        self::STATUS_ACTIVE,
+        self::STATUS_EXPIRED,
+        self::STATUS_CLOSED,
+        self::STATUS_WITHDRAWN,
+        self::STATUS_UNAVAILABLE,
+        self::STATUS_UNKNOWN,
+    ];
 
     protected $table = 'job_listings';
 
@@ -33,10 +51,14 @@ class JobListing extends Model
         'employment_type',
         'application_method',
         'quick_apply_status',
+        'listing_status',
         'retrieval_method',
         'first_detected_at',
         'last_observed_at',
         'last_extracted_at',
+        'expires_at',
+        'last_verified_at',
+        'verification_source',
         'extraction_status',
         'content_hash',
         'review_status',
@@ -53,7 +75,37 @@ class JobListing extends Model
             'first_detected_at' => 'datetime',
             'last_observed_at' => 'datetime',
             'last_extracted_at' => 'datetime',
+            'expires_at' => 'datetime',
+            'last_verified_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Check if this listing is currently actionable for applications.
+     */
+    public function isActionable(): bool
+    {
+        if ($this->listing_status !== self::STATUS_ACTIVE) {
+            return false;
+        }
+
+        if ($this->expires_at && $this->expires_at->isPast()) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Scope query to only currently active, non-expired listings.
+     */
+    public function scopeActiveOnly(Builder $query): Builder
+    {
+        return $query->where('job_listings.listing_status', self::STATUS_ACTIVE)
+            ->where(function (Builder $sub) {
+                $sub->whereNull('job_listings.expires_at')
+                    ->orWhere('job_listings.expires_at', '>', Carbon::now());
+            });
     }
 
     public function user(): BelongsTo

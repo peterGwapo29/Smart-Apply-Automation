@@ -18,6 +18,10 @@ export interface JobCheckResponse {
     title: string;
     company_name: string | null;
     quick_apply_status: 'available' | 'unavailable' | 'unknown' | 'requires_review';
+    listing_status?: 'active' | 'expired' | 'closed' | 'withdrawn' | 'unavailable' | 'unknown';
+    expires_at?: string | null;
+    last_verified_at?: string | null;
+    is_actionable?: boolean;
     last_observed_at: string;
     effective_review_status?: string;
     is_bookmarked?: boolean;
@@ -51,4 +55,64 @@ export interface ActiveTabDetection {
   isListingPage: boolean;
   url: string;
   jobId: string | null;
+}
+
+export interface RevalidateResponse {
+  status: string;
+  data: {
+    job_id: number;
+    listing_status: 'active' | 'expired' | 'closed' | 'withdrawn' | 'unavailable' | 'unknown';
+    is_actionable: boolean;
+    is_fresh: boolean;
+    expires_at: string | null;
+    last_verified_at: string | null;
+    verification_source: string;
+  };
+}
+
+export interface ExecutionWorkspaceResponse {
+  status: string;
+  data: {
+    application_id: number;
+    status: string;
+    job: {
+      id: number;
+      title: string;
+      company_name: string | null;
+      canonical_url: string;
+      source_platform: string;
+      listing_status: string;
+      is_actionable: boolean;
+    };
+    materials: {
+      selected_resume: {
+        id: number;
+        original_filename: string;
+      } | null;
+      cover_letter: string | null;
+      introduction: string | null;
+    };
+    screening_answers: Array<{
+      id: number;
+      question: string;
+      draft_answer: string | null;
+      confidence: string;
+      requires_review: boolean;
+    }>;
+    checklist: Array<{
+      id: string;
+      title: string;
+      completed: boolean;
+      required: boolean;
+      detail?: string | null;
+    }>;
+    can_execute: boolean;
+    submission: {
+      level: string | null;
+      evidence_type: string | null;
+      evidence_note: string | null;
+      authorized_at: string | null;
+      submitted_at: string | null;
+    };
+  };
 }

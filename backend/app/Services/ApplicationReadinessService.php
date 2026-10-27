@@ -86,7 +86,25 @@ class ApplicationReadinessService
             ];
         }
 
-        // 6. Job match disqualification check
+        // 6. Active listing verification check (Phase 10 cross-project rule)
+        if ($job && !$job->isActionable()) {
+            $blockingIssues[] = [
+                'code' => 'INACTIVE_JOB_LISTING',
+                'field' => 'listing_status',
+                'message' => "Job listing is marked [{$job->listing_status}] or has expired. Cannot proceed with application execution.",
+            ];
+        }
+
+        // 7. Duplicate submission check
+        if ($application->status === JobApplication::STATUS_SUBMITTED) {
+            $blockingIssues[] = [
+                'code' => 'ALREADY_SUBMITTED',
+                'field' => 'status',
+                'message' => 'This application has already been submitted and confirmed. Duplicate submissions are strictly prevented.',
+            ];
+        }
+
+        // 8. Job match disqualification check
         $match = JobMatch::where('candidate_profile_id', $profile->id)
             ->where('job_listing_id', $job->id)
             ->first();

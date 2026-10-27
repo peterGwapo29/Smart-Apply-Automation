@@ -84,6 +84,24 @@ export default function JobCard({
     }
   };
 
+  // Listing Availability / Expiration Badge (Phase 10)
+  const renderListingStatusBadge = () => {
+    if (!job.listing_status || job.listing_status === 'active') return null;
+    const statusLabels: Record<string, string> = {
+      expired: 'Expired',
+      closed: 'Closed',
+      withdrawn: 'Withdrawn',
+      unavailable: 'Unavailable',
+      unknown: 'Status Unknown',
+    };
+    const label = statusLabels[job.listing_status] || job.listing_status;
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-rose-100 text-rose-950 border border-rose-300 dark:bg-rose-950/80 dark:text-rose-300 dark:border-rose-800">
+        ⛔ {label}
+      </span>
+    );
+  };
+
   // Application Lifecycle Badge
   const renderAppBadge = (status?: ApplicationStatus) => {
     if (!status) return null;
@@ -198,6 +216,9 @@ export default function JobCard({
               Fit Uncalculated
             </span>
           )}
+
+          {/* Listing Active/Expired Badge (Phase 10) */}
+          {renderListingStatusBadge()}
 
           {/* Priority Tier Badge (Phase 9) */}
           {renderPriorityBadge()}
