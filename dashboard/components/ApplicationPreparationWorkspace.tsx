@@ -101,50 +101,68 @@ export default function ApplicationPreparationWorkspace({
     try {
       setBusy(true);
       setError(null);
-      await selectResume(applicationId, resumeId, 'Candidate manual selection');
-      setNotice('Resume version updated.');
+      await selectResume(applicationId, resumeId);
+      setNotice('Resume version attached to application.');
       await loadWorkspace();
       onReadinessChange?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update resume');
+      setError(err instanceof Error ? err.message : 'Failed to select resume version');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleRecommendResume = async () => {
+    try {
+      setBusy(true);
+      setError(null);
+      const rec = await recommendResume(applicationId);
+      setNotice(
+        rec.recommended_resume
+          ? `AI Recommendation: ${rec.recommended_resume.original_filename}. Reason: ${rec.rationale}`
+          : 'No specific resume recommendation generated.'
+      );
+      await loadWorkspace();
+      onReadinessChange?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to calculate resume recommendation');
     } finally {
       setBusy(false);
     }
   };
 
   const handleAddQuestion = async (customQ?: string) => {
-    const q = customQ || newQuestion.trim();
-    if (!q) return;
+    const q = customQ || newQuestion;
+    if (!q.trim()) return;
+
     try {
       setBusy(true);
       setError(null);
       await draftScreeningQuestions(applicationId, [q]);
       if (!customQ) setNewQuestion('');
-      setNotice('Screening question drafted against verified candidate profile.');
+      setNotice('Question analyzed and drafted using candidate evidence.');
       await loadWorkspace();
       onReadinessChange?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to draft question answer');
+      setError(err instanceof Error ? err.message : 'Failed to draft screening answer');
     } finally {
       setBusy(false);
     }
   };
 
-  const handleUpdateAnswer = async (questionId: number) => {
-    const draft = editingAnswers[questionId];
-    if (draft === undefined) return;
+  const handleUpdateAnswer = async (answerId: number) => {
+    const customText = editingAnswers[answerId];
+    if (customText === undefined) return;
+
     try {
       setBusy(true);
       setError(null);
-      await updateScreeningQuestion(applicationId, questionId, {
-        draft_answer: draft,
-        requires_review: false,
-      });
-      setNotice('Answer confirmed and saved.');
+      await updateScreeningQuestion(applicationId, answerId, { draft_answer: customText });
+      setNotice('Screening answer updated and verified.');
       await loadWorkspace();
       onReadinessChange?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save answer');
+      setError(err instanceof Error ? err.message : 'Failed to update screening answer');
     } finally {
       setBusy(false);
     }
@@ -154,8 +172,12 @@ export default function ApplicationPreparationWorkspace({
     try {
       setBusy(true);
       setError(null);
-      await evaluateApplicationReadiness(applicationId);
-      setNotice('Readiness criteria re-evaluated.');
+      const res = await evaluateApplicationReadiness(applicationId);
+      setNotice(
+        res.readiness?.is_ready
+          ? '✓ Application is 100% Ready for Submission!'
+          : 'Readiness evaluated: Please review outstanding issues.'
+      );
       await loadWorkspace();
       onReadinessChange?.();
     } catch (err) {
@@ -167,7 +189,7 @@ export default function ApplicationPreparationWorkspace({
 
   if (loading) {
     return (
-      <div className="p-8 text-center text-slate-500 text-sm animate-pulse">
+      <div className="p-8 text-center text-slate-600 dark:text-[#94A3B8] text-sm animate-pulse">
         Loading AI Application Preparation Workspace...
       </div>
     );
@@ -175,7 +197,7 @@ export default function ApplicationPreparationWorkspace({
 
   if (!data) {
     return (
-      <div className="p-4 rounded-lg bg-rose-50 text-rose-700 text-xs">
+      <div className="p-4 rounded-lg bg-rose-50 text-rose-800 dark:bg-rose-950/50 dark:text-rose-300 border border-rose-300 dark:border-rose-800 text-xs">
         {error || 'Unable to load workspace data.'}
       </div>
     );
@@ -188,33 +210,33 @@ export default function ApplicationPreparationWorkspace({
   return (
     <div className="space-y-6">
       {/* Evidence Provenance Header Banner */}
-      <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-xl border border-slate-200 dark:border-slate-700/60 flex flex-wrap items-center justify-between gap-4">
+      <div className="bg-slate-50 dark:bg-[#172033] p-4 rounded-xl border border-slate-200 dark:border-[#293548] flex flex-wrap items-center justify-between gap-4 transition-colors">
         <div className="flex flex-wrap items-center gap-6 text-xs">
           <div>
-            <span className="text-slate-400 block font-medium">Verified Employment:</span>
-            <span className="font-bold text-slate-900 dark:text-white">
+            <span className="text-slate-600 dark:text-[#94A3B8] block font-medium">Verified Employment:</span>
+            <span className="font-bold text-slate-900 dark:text-[#F3F4F6]">
               {data.evidence_summary.verified_professional_years} Years
             </span>
-            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 ml-1 font-mono">
+            <span className="text-[10px] text-emerald-700 dark:text-emerald-400 ml-1 font-mono font-medium">
               (strict employment duration)
             </span>
           </div>
           <div>
-            <span className="text-slate-400 block font-medium">Verified Skills:</span>
-            <span className="font-bold text-slate-900 dark:text-white">
+            <span className="text-slate-600 dark:text-[#94A3B8] block font-medium">Verified Skills:</span>
+            <span className="font-bold text-slate-900 dark:text-[#F3F4F6]">
               {data.evidence_summary.skills_count} verified
             </span>
           </div>
           <div>
-            <span className="text-slate-400 block font-medium">Practical Projects:</span>
-            <span className="font-bold text-slate-900 dark:text-white">
+            <span className="text-slate-600 dark:text-[#94A3B8] block font-medium">Practical Projects:</span>
+            <span className="font-bold text-slate-900 dark:text-[#F3F4F6]">
               {data.evidence_summary.projects_count} portfolio items
             </span>
-            <span className="text-[10px] text-slate-400 ml-1">(isolated from tenure)</span>
+            <span className="text-[10px] text-slate-500 dark:text-[#94A3B8] ml-1">(isolated from tenure)</span>
           </div>
           <div>
-            <span className="text-slate-400 block font-medium">Notice Period:</span>
-            <span className="font-bold text-slate-900 dark:text-white">
+            <span className="text-slate-600 dark:text-[#94A3B8] block font-medium">Notice Period:</span>
+            <span className="font-bold text-slate-900 dark:text-[#F3F4F6]">
               {data.evidence_summary.notice_period_weeks} weeks
             </span>
           </div>
@@ -225,8 +247,8 @@ export default function ApplicationPreparationWorkspace({
           <span
             className={`px-3 py-1 rounded-full text-xs font-bold tracking-wide uppercase flex items-center gap-1.5 ${
               isReady
-                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700'
-                : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300 dark:border-amber-700'
+                ? 'bg-emerald-100 text-emerald-950 dark:bg-emerald-950/70 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'
+                : 'bg-amber-100 text-amber-950 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-300 dark:border-amber-800'
             }`}
           >
             <span className={`w-2 h-2 rounded-full ${isReady ? 'bg-emerald-500' : 'bg-amber-500'}`} />
@@ -236,7 +258,7 @@ export default function ApplicationPreparationWorkspace({
             onClick={handleReevaluateReadiness}
             disabled={busy}
             title="Re-check all readiness criteria"
-            className="px-2.5 py-1 text-xs border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors"
+            className="px-2.5 py-1 text-xs border border-slate-300 dark:border-[#293548] rounded-lg hover:bg-slate-100 dark:hover:bg-[#1E293B] text-slate-700 dark:text-[#CBD5E1] transition-colors cursor-pointer"
           >
             ↻ Check Readiness
           </button>
@@ -244,33 +266,33 @@ export default function ApplicationPreparationWorkspace({
       </div>
 
       {notice && (
-        <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 text-xs rounded-lg border border-emerald-200 dark:border-emerald-800 flex justify-between items-center">
-          <span>✓ {notice}</span>
-          <button onClick={() => setNotice(null)} className="text-emerald-600 hover:underline">
+        <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-300 text-xs rounded-lg border border-emerald-300 dark:border-emerald-800 flex justify-between items-center">
+          <span className="font-medium">✓ {notice}</span>
+          <button onClick={() => setNotice(null)} className="text-emerald-700 dark:text-emerald-400 hover:underline font-bold">
             dismiss
           </button>
         </div>
       )}
 
       {error && (
-        <div className="p-3 bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-300 text-xs rounded-lg border border-rose-200 dark:border-rose-800">
+        <div className="p-3 bg-rose-50 dark:bg-rose-950/50 text-rose-900 dark:text-rose-300 text-xs rounded-lg border border-rose-300 dark:border-rose-800">
           ⚠ {error}
         </div>
       )}
 
       {/* Navigation Tabs */}
-      <div className="flex border-b border-slate-200 dark:border-slate-700 text-xs font-semibold">
+      <div className="flex border-b border-slate-200 dark:border-[#293548] text-xs font-semibold overflow-x-auto">
         <button
           onClick={() => setActiveTab('materials')}
-          className={`px-4 py-2.5 border-b-2 transition-colors ${
+          className={`px-4 py-2.5 border-b-2 transition-colors whitespace-nowrap cursor-pointer ${
             activeTab === 'materials'
-              ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 dark:border-indigo-400'
-              : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'
+              ? 'border-blue-600 text-blue-600 dark:text-blue-400 font-bold'
+              : 'border-transparent text-slate-600 dark:text-[#CBD5E1] hover:text-slate-900 dark:hover:text-white'
           }`}
         >
           Tailored Cover Letter & Intro
           {data.material?.is_candidate_edited && (
-            <span className="ml-1.5 px-1.5 py-0.5 rounded text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+            <span className="ml-1.5 px-1.5 py-0.5 rounded text-[10px] bg-slate-100 dark:bg-[#1E293B] text-slate-700 dark:text-[#CBD5E1] border border-slate-200 dark:border-[#293548]">
               Edited
             </span>
           )}
@@ -278,10 +300,10 @@ export default function ApplicationPreparationWorkspace({
 
         <button
           onClick={() => setActiveTab('questions')}
-          className={`px-4 py-2.5 border-b-2 transition-colors flex items-center gap-1.5 ${
+          className={`px-4 py-2.5 border-b-2 transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
             activeTab === 'questions'
-              ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 dark:border-indigo-400'
-              : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'
+              ? 'border-blue-600 text-blue-600 dark:text-blue-400 font-bold'
+              : 'border-transparent text-slate-600 dark:text-[#CBD5E1] hover:text-slate-900 dark:hover:text-white'
           }`}
         >
           Screening Questions Assistant
@@ -292,58 +314,53 @@ export default function ApplicationPreparationWorkspace({
 
         <button
           onClick={() => setActiveTab('resume')}
-          className={`px-4 py-2.5 border-b-2 transition-colors ${
+          className={`px-4 py-2.5 border-b-2 transition-colors whitespace-nowrap cursor-pointer ${
             activeTab === 'resume'
-              ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 dark:border-indigo-400'
-              : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'
+              ? 'border-blue-600 text-blue-600 dark:text-blue-400 font-bold'
+              : 'border-transparent text-slate-600 dark:text-[#CBD5E1] hover:text-slate-900 dark:hover:text-white'
           }`}
         >
-          Résumé Version Selection
+          Selected Résumé
         </button>
 
         <button
           onClick={() => setActiveTab('readiness')}
-          className={`px-4 py-2.5 border-b-2 transition-colors flex items-center gap-1.5 ${
+          className={`px-4 py-2.5 border-b-2 transition-colors whitespace-nowrap cursor-pointer ${
             activeTab === 'readiness'
-              ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 dark:border-indigo-400'
-              : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'
+              ? 'border-blue-600 text-blue-600 dark:text-blue-400 font-bold'
+              : 'border-transparent text-slate-600 dark:text-[#CBD5E1] hover:text-slate-900 dark:hover:text-white'
           }`}
         >
-          Readiness Checklist
-          {blockingIssues.length > 0 && (
-            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300">
-              {blockingIssues.length}
-            </span>
-          )}
+          Readiness Checks ({blockingIssues.length} blockers)
         </button>
       </div>
 
       {/* Tab 1: Materials */}
       {activeTab === 'materials' && (
         <div className="space-y-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <h4 className="text-sm font-bold text-slate-900 dark:text-white">
-                Application Materials (Draft v{data.material?.version || 1})
+              <h4 className="text-sm font-bold text-slate-900 dark:text-[#F3F4F6]">
+                Application Cover Letter & Introduction
               </h4>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Tailored for {data.job.title} at {data.job.company_name}. Fully grounded in verified experience.
+              <p className="text-xs text-slate-600 dark:text-[#94A3B8] mt-0.5">
+                Tailored dynamically from strictly verified candidate employment, skills, and projects.
               </p>
             </div>
             <div className="flex items-center gap-2">
               <button
                 onClick={handleGenerateMaterials}
                 disabled={busy}
-                className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition-colors disabled:opacity-50"
+                className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white transition-colors disabled:opacity-50"
               >
-                {data.material?.cover_letter ? '↻ Regenerate Materials' : '✨ Generate Tailored Materials'}
+                {busy ? 'Generating...' : '✨ Generate Tailored Materials'}
               </button>
               <button
                 onClick={handleSaveMaterials}
                 disabled={busy}
-                className="px-3.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-semibold transition-colors disabled:opacity-50"
+                className="px-3.5 py-1.5 rounded-lg text-xs font-semibold border border-slate-300 dark:border-[#293548] text-slate-800 dark:text-[#CBD5E1] hover:bg-slate-100 dark:hover:bg-[#1E293B] transition-colors"
               >
-                💾 Save Edits
+                Save Edits
               </button>
             </div>
           </div>
@@ -351,10 +368,10 @@ export default function ApplicationPreparationWorkspace({
           {/* Cover Letter */}
           <div className="space-y-2">
             <div className="flex justify-between items-center text-xs">
-              <label className="font-semibold text-slate-700 dark:text-slate-300">
+              <label className="font-bold text-slate-800 dark:text-[#CBD5E1]">
                 Tailored Cover Letter
               </label>
-              <span className="text-slate-400 font-mono">
+              <span className="text-slate-500 dark:text-[#94A3B8] font-mono">
                 {coverLetter.trim() ? coverLetter.trim().split(/\s+/).length : 0} words
               </span>
             </div>
@@ -363,17 +380,17 @@ export default function ApplicationPreparationWorkspace({
               value={coverLetter}
               onChange={(e) => setCoverLetter(e.target.value)}
               placeholder="Click 'Generate Tailored Materials' or type your custom cover letter here..."
-              className="w-full text-xs font-mono p-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none leading-relaxed"
+              className="w-full text-xs font-mono p-3 rounded-lg border border-slate-300 dark:border-[#293548] bg-slate-50 dark:bg-[#0B1220] text-slate-900 dark:text-[#F3F4F6] placeholder-slate-400 dark:placeholder-slate-500 focus:ring-2 focus:ring-blue-500 outline-none leading-relaxed"
             />
           </div>
 
           {/* Application Introduction */}
           <div className="space-y-2">
             <div className="flex justify-between items-center text-xs">
-              <label className="font-semibold text-slate-700 dark:text-slate-300">
+              <label className="font-bold text-slate-800 dark:text-[#CBD5E1]">
                 Concise Application Introduction (for short form fields)
               </label>
-              <span className="text-slate-400 font-mono">
+              <span className="text-slate-500 dark:text-[#94A3B8] font-mono">
                 {introduction.length} characters / {introduction.trim() ? introduction.trim().split(/\s+/).length : 0} words
               </span>
             </div>
@@ -382,7 +399,7 @@ export default function ApplicationPreparationWorkspace({
               value={introduction}
               onChange={(e) => setIntroduction(e.target.value)}
               placeholder="Concise 2-3 sentence executive intro for platform quick-apply forms..."
-              className="w-full text-xs p-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none"
+              className="w-full text-xs p-3 rounded-lg border border-slate-300 dark:border-[#293548] bg-slate-50 dark:bg-[#0B1220] text-slate-900 dark:text-[#F3F4F6] placeholder-slate-400 dark:placeholder-slate-500 focus:ring-2 focus:ring-blue-500 outline-none"
             />
           </div>
         </div>
@@ -393,18 +410,18 @@ export default function ApplicationPreparationWorkspace({
         <div className="space-y-6">
           <div className="flex justify-between items-center">
             <div>
-              <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+              <h4 className="text-sm font-bold text-slate-900 dark:text-[#F3F4F6]">
                 Screening Questions Assistant
               </h4>
-              <p className="text-xs text-slate-500 mt-0.5">
+              <p className="text-xs text-slate-600 dark:text-[#94A3B8] mt-0.5">
                 Questions are grounded strictly in candidate records. Unknowns and legal commitments require manual review.
               </p>
             </div>
           </div>
 
           {/* Quick Presets */}
-          <div className="p-3 bg-slate-50 dark:bg-slate-800/40 rounded-lg border border-slate-200 dark:border-slate-700 text-xs space-y-2">
-            <div className="font-semibold text-slate-600 dark:text-slate-300">
+          <div className="p-3 bg-slate-50 dark:bg-[#172033] rounded-lg border border-slate-200 dark:border-[#293548] text-xs space-y-2">
+            <div className="font-bold text-slate-800 dark:text-[#CBD5E1]">
               Quick Add Common Platform Screening Questions:
             </div>
             <div className="flex flex-wrap gap-2">
@@ -418,7 +435,7 @@ export default function ApplicationPreparationWorkspace({
                   key={idx}
                   onClick={() => handleAddQuestion(preset)}
                   disabled={busy}
-                  className="px-2.5 py-1 rounded bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-indigo-500 transition-colors text-[11px]"
+                  className="px-2.5 py-1 rounded bg-white dark:bg-[#1E293B] border border-slate-300 dark:border-[#293548] text-slate-800 dark:text-[#CBD5E1] hover:border-blue-500 transition-colors text-[11px] font-medium cursor-pointer"
                 >
                   + {preset}
                 </button>
@@ -433,12 +450,12 @@ export default function ApplicationPreparationWorkspace({
               value={newQuestion}
               onChange={(e) => setNewQuestion(e.target.value)}
               placeholder="Enter custom screening question to analyze..."
-              className="flex-1 text-xs px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none"
+              className="flex-1 text-xs px-3 py-2 rounded-lg border border-slate-300 dark:border-[#293548] bg-slate-50 dark:bg-[#0B1220] text-slate-900 dark:text-[#F3F4F6] placeholder-slate-400 dark:placeholder-slate-500 focus:ring-2 focus:ring-blue-500 outline-none"
             />
             <button
               onClick={() => handleAddQuestion()}
               disabled={busy || !newQuestion.trim()}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold transition-colors disabled:opacity-50"
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-colors disabled:opacity-50"
             >
               Analyze & Draft
             </button>
@@ -454,31 +471,31 @@ export default function ApplicationPreparationWorkspace({
                     key={ans.id}
                     className={`p-4 rounded-xl border text-xs space-y-3 transition-colors ${
                       ans.requires_review
-                        ? 'border-amber-300 dark:border-amber-700/60 bg-amber-50/40 dark:bg-amber-950/20'
-                        : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900'
+                        ? 'border-amber-300 dark:border-amber-700 bg-amber-50/20 dark:bg-amber-950/20'
+                        : 'border-slate-200 dark:border-[#293548] bg-white dark:bg-[#172033]'
                     }`}
                   >
                     <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div className="font-semibold text-slate-900 dark:text-white max-w-xl">
+                      <div className="font-semibold text-slate-900 dark:text-[#F3F4F6] max-w-xl">
                         {ans.question}
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="px-2 py-0.5 rounded text-[10px] font-mono uppercase bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-mono uppercase bg-slate-100 dark:bg-[#1E293B] text-slate-700 dark:text-[#CBD5E1] border border-slate-200 dark:border-[#293548]">
                           {ans.category.replace('_', ' ')}
                         </span>
                         <span
-                          className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
                             ans.confidence === 'high'
-                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                              ? 'bg-emerald-100 text-emerald-950 border-emerald-300 dark:bg-emerald-950/70 dark:text-emerald-300 dark:border-emerald-800'
                               : ans.confidence === 'medium'
-                              ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300'
-                              : 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
+                              ? 'bg-blue-100 text-blue-950 border-blue-300 dark:bg-blue-950/70 dark:text-blue-300 dark:border-blue-800'
+                              : 'bg-rose-100 text-rose-950 border-rose-300 dark:bg-rose-950/70 dark:text-rose-300 dark:border-rose-800'
                           }`}
                         >
                           {ans.confidence.toUpperCase()} CONFIDENCE
                         </span>
                         {ans.requires_review && (
-                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-200 text-amber-900 dark:bg-amber-900 dark:text-amber-200">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-950 border border-amber-300 dark:bg-amber-950/70 dark:text-amber-300 dark:border-amber-800">
                             ⚠ REVIEW REQUIRED
                           </span>
                         )}
@@ -486,31 +503,31 @@ export default function ApplicationPreparationWorkspace({
                     </div>
 
                     {ans.review_reason && (
-                      <div className="text-[11px] text-amber-700 dark:text-amber-400 bg-amber-100/50 dark:bg-amber-900/30 p-2 rounded">
+                      <div className="text-[11px] text-amber-950 dark:text-amber-300 bg-amber-100/60 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-900 p-2.5 rounded-lg">
                         Note: {ans.review_reason}
                       </div>
                     )}
 
                     <div className="space-y-1.5">
-                      <label className="text-[11px] font-medium text-slate-500">
+                      <label className="text-[11px] font-bold text-slate-700 dark:text-[#CBD5E1]">
                         Draft Answer (Editable):
                       </label>
                       <input
                         type="text"
                         value={currentDraft}
                         onChange={(e) => setEditingAnswers({ ...editingAnswers, [ans.id]: e.target.value })}
-                        className="w-full text-xs p-2 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 outline-none focus:ring-1 focus:ring-indigo-500"
+                        className="w-full text-xs p-2 rounded-lg border border-slate-300 dark:border-[#293548] bg-slate-50 dark:bg-[#0B1220] text-slate-900 dark:text-[#F3F4F6] outline-none focus:ring-1 focus:ring-blue-500"
                       />
                     </div>
 
                     <div className="flex justify-between items-center pt-1">
-                      <span className="text-[10px] text-slate-400">
+                      <span className="text-[10px] text-slate-500 dark:text-[#94A3B8]">
                         {ans.is_candidate_edited ? '✓ Verified by candidate' : 'AI Draft grounded in evidence'}
                       </span>
                       <button
                         onClick={() => handleUpdateAnswer(ans.id)}
                         disabled={busy}
-                        className="px-3 py-1 rounded bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600 text-white text-[11px] font-semibold transition-colors"
+                        className="px-3 py-1 rounded bg-slate-800 hover:bg-slate-900 dark:bg-[#1E293B] dark:hover:bg-[#293548] text-white text-[11px] font-semibold transition-colors border border-slate-700 dark:border-[#293548] cursor-pointer"
                       >
                         ✓ Confirm Answer
                       </button>
@@ -519,7 +536,7 @@ export default function ApplicationPreparationWorkspace({
                 );
               })
             ) : (
-              <div className="p-8 text-center text-slate-400 text-xs border border-dashed rounded-xl">
+              <div className="p-8 text-center text-slate-500 dark:text-[#94A3B8] text-xs border border-dashed border-slate-300 dark:border-[#293548] rounded-xl bg-slate-50 dark:bg-[#172033]">
                 No screening questions analyzed yet. Add questions above to evaluate evidence grounding.
               </div>
             )}
@@ -530,27 +547,36 @@ export default function ApplicationPreparationWorkspace({
       {/* Tab 3: Resume Version Selection */}
       {activeTab === 'resume' && (
         <div className="space-y-6">
-          <div>
-            <h4 className="text-sm font-bold text-slate-900 dark:text-white">
-              Selected Résumé Version
-            </h4>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Choose which processed résumé version to associate with this job application.
-            </p>
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h4 className="text-sm font-bold text-slate-900 dark:text-[#F3F4F6]">
+                Selected Résumé Version
+              </h4>
+              <p className="text-xs text-slate-600 dark:text-[#94A3B8] mt-0.5">
+                Choose which processed résumé version to associate with this job application.
+              </p>
+            </div>
+            <button
+              onClick={handleRecommendResume}
+              disabled={busy}
+              className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+            >
+              ✨ Recommend Best Version
+            </button>
           </div>
 
           {/* Current Selection */}
-          <div className="p-4 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/30 dark:bg-indigo-950/20 space-y-2">
+          <div className="p-4 rounded-xl border border-blue-200 dark:border-blue-900 bg-blue-50/40 dark:bg-blue-950/30 space-y-2">
             <div className="flex justify-between items-center text-xs">
-              <span className="font-semibold text-indigo-900 dark:text-indigo-200">
+              <span className="font-bold text-blue-950 dark:text-blue-200">
                 Active Selection:
               </span>
-              <span className="font-mono text-indigo-700 dark:text-indigo-300">
+              <span className="font-mono text-blue-800 dark:text-blue-300 font-semibold">
                 {data.material?.selected_resume?.original_filename || 'No resume selected'}
               </span>
             </div>
             {data.material?.resume_selection_rationale && (
-              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+              <p className="text-xs text-slate-700 dark:text-[#CBD5E1] leading-relaxed">
                 Rationale: {data.material.resume_selection_rationale}
               </p>
             )}
@@ -558,7 +584,7 @@ export default function ApplicationPreparationWorkspace({
 
           {/* Switcher Table */}
           <div className="space-y-3">
-            <h5 className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+            <h5 className="text-xs font-bold text-slate-800 dark:text-[#CBD5E1]">
               Available Candidate Résumé Versions ({data.available_resumes?.length || 0}):
             </h5>
             <div className="space-y-2">
@@ -567,17 +593,17 @@ export default function ApplicationPreparationWorkspace({
                 return (
                   <div
                     key={res.id}
-                    className={`p-3 rounded-lg border text-xs flex items-center justify-between transition-colors ${
+                    className={`p-3 rounded-xl border text-xs flex items-center justify-between transition-colors ${
                       isCurrent
-                        ? 'border-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/40 font-semibold'
-                        : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900'
+                        ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-950/40 font-semibold'
+                        : 'border-slate-200 dark:border-[#293548] bg-white dark:bg-[#172033]'
                     }`}
                   >
                     <div className="flex items-center gap-3">
                       <span className="text-base">{isCurrent ? '★' : '📄'}</span>
                       <div>
-                        <div className="text-slate-900 dark:text-white">{res.original_filename}</div>
-                        <div className="text-[10px] text-slate-400">
+                        <div className="text-slate-900 dark:text-[#F3F4F6] font-medium">{res.original_filename}</div>
+                        <div className="text-[10px] text-slate-500 dark:text-[#94A3B8]">
                           Uploaded {new Date(res.created_at).toLocaleDateString()}
                           {res.is_active && ' • Profile Default'}
                         </div>
@@ -585,14 +611,14 @@ export default function ApplicationPreparationWorkspace({
                     </div>
                     <div>
                       {isCurrent ? (
-                        <span className="px-2.5 py-1 rounded bg-indigo-600 text-white text-[11px] font-bold">
+                        <span className="px-2.5 py-1 rounded-lg bg-blue-600 text-white text-[11px] font-bold">
                           Selected
                         </span>
                       ) : (
                         <button
                           onClick={() => handleSelectResume(res.id)}
                           disabled={busy}
-                          className="px-2.5 py-1 rounded border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 text-[11px] transition-colors"
+                          className="px-2.5 py-1 rounded-lg border border-slate-300 dark:border-[#293548] hover:bg-slate-100 dark:hover:bg-[#1E293B] text-slate-700 dark:text-[#CBD5E1] text-[11px] font-medium transition-colors cursor-pointer"
                         >
                           Select for Application
                         </button>
@@ -610,10 +636,10 @@ export default function ApplicationPreparationWorkspace({
       {activeTab === 'readiness' && (
         <div className="space-y-6">
           <div>
-            <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+            <h4 className="text-sm font-bold text-slate-900 dark:text-[#F3F4F6]">
               Application Readiness Evaluation
             </h4>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <p className="text-xs text-slate-600 dark:text-[#94A3B8] mt-0.5">
               Deterministic verification engine ensuring zero errors before platform submission.
             </p>
           </div>
@@ -622,8 +648,8 @@ export default function ApplicationPreparationWorkspace({
           <div
             className={`p-4 rounded-xl border text-xs flex items-start gap-3 ${
               isReady
-                ? 'bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200 border-emerald-300 dark:border-emerald-700'
-                : 'bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200 border-amber-300 dark:border-amber-700'
+                ? 'bg-emerald-50 text-emerald-950 dark:bg-emerald-950/40 dark:text-emerald-200 border-emerald-300 dark:border-emerald-700'
+                : 'bg-amber-50 text-amber-950 dark:bg-amber-950/40 dark:text-amber-200 border-amber-300 dark:border-amber-700'
             }`}
           >
             <span className="text-lg">{isReady ? '✓' : '⚠'}</span>
@@ -642,20 +668,20 @@ export default function ApplicationPreparationWorkspace({
           {/* Blocking issues list */}
           {blockingIssues.length > 0 && (
             <div className="space-y-2">
-              <h5 className="text-xs font-bold text-rose-600 dark:text-rose-400 uppercase tracking-wider">
+              <h5 className="text-xs font-bold text-rose-700 dark:text-rose-400 uppercase tracking-wider">
                 Blocking Issues ({blockingIssues.length}):
               </h5>
               <div className="space-y-2">
                 {blockingIssues.map((issue, idx) => (
                   <div
                     key={idx}
-                    className="p-3 rounded-lg border border-rose-200 dark:border-rose-900 bg-rose-50/40 dark:bg-rose-950/20 text-xs flex items-center justify-between"
+                    className="p-3 rounded-lg border border-rose-300 dark:border-rose-900 bg-rose-50/50 dark:bg-rose-950/30 text-xs flex items-center justify-between"
                   >
                     <div className="flex items-center gap-2">
-                      <span className="text-rose-500 font-bold">✕</span>
-                      <span className="text-slate-800 dark:text-slate-200">{issue.message}</span>
+                      <span className="text-rose-600 font-bold">✕</span>
+                      <span className="text-slate-900 dark:text-[#F3F4F6] font-medium">{issue.message}</span>
                     </div>
-                    <span className="text-[10px] font-mono text-rose-500 bg-rose-100 dark:bg-rose-900/40 px-2 py-0.5 rounded">
+                    <span className="text-[10px] font-mono text-rose-700 bg-rose-100 dark:bg-rose-900/60 px-2 py-0.5 rounded border border-rose-300 dark:border-rose-800">
                       {issue.code}
                     </span>
                   </div>
@@ -667,20 +693,20 @@ export default function ApplicationPreparationWorkspace({
           {/* Warnings list */}
           {warnings.length > 0 && (
             <div className="space-y-2">
-              <h5 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+              <h5 className="text-xs font-bold text-slate-600 dark:text-[#94A3B8] uppercase tracking-wider">
                 Non-Blocking Warnings ({warnings.length}):
               </h5>
               <div className="space-y-2">
                 {warnings.map((warn, idx) => (
                   <div
                     key={idx}
-                    className="p-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40 text-xs flex items-center justify-between"
+                    className="p-3 rounded-lg border border-slate-200 dark:border-[#293548] bg-slate-50 dark:bg-[#172033] text-xs flex items-center justify-between"
                   >
                     <div className="flex items-center gap-2">
                       <span className="text-amber-500">ℹ</span>
-                      <span className="text-slate-700 dark:text-slate-300">{warn.message}</span>
+                      <span className="text-slate-800 dark:text-[#CBD5E1]">{warn.message}</span>
                     </div>
-                    <span className="text-[10px] font-mono text-slate-400 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded">
+                    <span className="text-[10px] font-mono text-slate-600 dark:text-[#CBD5E1] bg-slate-100 dark:bg-[#1E293B] px-2 py-0.5 rounded border border-slate-200 dark:border-[#293548]">
                       {warn.code}
                     </span>
                   </div>

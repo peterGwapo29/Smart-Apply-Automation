@@ -25,11 +25,11 @@ export default function ApiStatusCard() {
   };
 
   return (
-    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 shadow-sm">
+    <div className="bg-white dark:bg-[#111827] border border-slate-200 dark:border-[#293548] rounded-xl p-6 shadow-sm transition-colors">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Backend API Status</h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
+          <h2 className="text-lg font-bold text-slate-900 dark:text-[#F3F4F6]">Backend API Status</h2>
+          <p className="text-xs text-slate-600 dark:text-[#94A3B8] mt-0.5">
             Real-time connection monitor to Laravel REST API
           </p>
         </div>
@@ -45,49 +45,49 @@ export default function ApiStatusCard() {
                 : 'bg-rose-500'
             }`}
           />
-          <span className="text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+          <span className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-[#CBD5E1]">
             {status}
           </span>
         </div>
       </div>
 
       <div className="space-y-3 mb-6">
-        <div className="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-4 border border-slate-100 dark:border-slate-800">
-          <div className="grid grid-cols-2 gap-4 text-sm">
+        <div className="bg-slate-50 dark:bg-[#172033] rounded-lg p-4 border border-slate-200 dark:border-[#293548]">
+          <div className="grid grid-cols-2 gap-4 text-xs">
             <div>
-              <span className="text-slate-500 dark:text-slate-400 block text-xs">Target Endpoint</span>
-              <span className="font-mono text-slate-800 dark:text-slate-200 font-medium">/api/health</span>
+              <span className="text-slate-500 dark:text-[#94A3B8] block font-medium">Target Endpoint</span>
+              <span className="font-mono text-slate-900 dark:text-[#F3F4F6] font-semibold text-sm">/api/health</span>
             </div>
             <div>
-              <span className="text-slate-500 dark:text-slate-400 block text-xs">Last Verified</span>
-              <span className="text-slate-800 dark:text-slate-200 font-medium">{lastChecked || 'Not verified yet'}</span>
+              <span className="text-slate-500 dark:text-[#94A3B8] block font-medium">Last Verified</span>
+              <span className="text-slate-800 dark:text-[#CBD5E1] font-medium text-sm">{lastChecked || 'Not verified yet'}</span>
             </div>
           </div>
         </div>
 
         {status === 'success' && data && (
-          <div className="p-4 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/50 rounded-lg text-sm space-y-1">
+          <div className="p-4 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 rounded-lg text-xs space-y-1.5">
             <div className="flex justify-between">
-              <span className="text-emerald-700 dark:text-emerald-300 font-medium">Service Name:</span>
-              <span className="font-mono text-emerald-800 dark:text-emerald-200">{data.service}</span>
+              <span className="text-emerald-900 dark:text-emerald-300 font-medium">Service Name:</span>
+              <span className="font-mono font-bold text-emerald-950 dark:text-emerald-200">{data.service}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-emerald-700 dark:text-emerald-300 font-medium">Status Code:</span>
-              <span className="font-mono text-emerald-800 dark:text-emerald-200">{data.status}</span>
+              <span className="text-emerald-900 dark:text-emerald-300 font-medium">Status Code:</span>
+              <span className="font-mono font-bold text-emerald-950 dark:text-emerald-200">{data.status}</span>
             </div>
             {data.database && (
               <div className="flex justify-between">
-                <span className="text-emerald-700 dark:text-emerald-300 font-medium">Database State:</span>
-                <span className="font-mono font-semibold text-emerald-700 dark:text-emerald-300">{data.database}</span>
+                <span className="text-emerald-900 dark:text-emerald-300 font-medium">Database State:</span>
+                <span className="font-mono font-bold text-emerald-800 dark:text-emerald-300">{data.database}</span>
               </div>
             )}
           </div>
         )}
 
         {status === 'error' && errorMessage && (
-          <div className="p-4 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/50 rounded-lg text-sm">
-            <p className="text-rose-700 dark:text-rose-300 font-semibold mb-1">Connection Failed</p>
-            <p className="text-rose-600 dark:text-rose-400 text-xs font-mono">{errorMessage}</p>
+          <div className="p-4 bg-rose-50 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-800 rounded-lg text-xs">
+            <p className="text-rose-900 dark:text-rose-300 font-bold mb-1">Connection Failed</p>
+            <p className="text-rose-800 dark:text-rose-400 font-mono">{errorMessage}</p>
           </div>
         )}
       </div>
@@ -95,7 +95,7 @@ export default function ApiStatusCard() {
       <button
         onClick={checkConnection}
         disabled={status === 'loading'}
-        className="w-full sm:w-auto inline-flex items-center justify-center px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-sm font-semibold rounded-lg transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+        className="w-full sm:w-auto inline-flex items-center justify-center px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-xs font-semibold rounded-lg transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 cursor-pointer"
       >
         {status === 'loading' ? (
           <>

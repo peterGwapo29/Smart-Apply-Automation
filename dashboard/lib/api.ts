@@ -439,6 +439,8 @@ export interface JobListingRecord {
   salary_currency: string | null;
   salary_raw: string | null;
   employment_type: string | null;
+  work_arrangement?: string | null;
+  skills?: string[] | null;
   application_method: string;
   quick_apply_status: 'available' | 'unavailable' | 'unknown' | 'requires_review';
   retrieval_method: string;
