@@ -10,94 +10,156 @@ This document defines the architectural boundaries, communication models, securi
 flowchart TD
     subgraph Browser ["Client Environment (Browser)"]
         CE["Chrome Extension (Manifest V3)<br/>Vite + React + TS<br/>Unpacked (extension/dist)"]
-        DB["Web Dashboard<br/>Next.js + React + Tailwind<br/>http://localhost:3000"]
+        DB["Web Dashboard<br/>Next.js 16 + React 19 + Tailwind<br/>http://localhost:3000"]
     end
 
-    subgraph Server ["Backend Environment"]
-        API["Laravel 11 REST API<br/>PHP 8.3<br/>http://127.0.0.1:8000"]
+    subgraph Server ["Backend API (Laravel 11)"]
+        RC["Resume Controller & Service<br/>PdfParserService + StructuredExtractor"]
+        CPC["Candidate Profile Controller"]
+        Storage["Private Storage<br/>storage/app/resumes/"]
     end
 
-    subgraph DatabaseLayer ["Data Storage"]
-        DBStore[("MySQL / MariaDB<br/>jobstreet_quick_apply<br/>Port 3306")]
+    subgraph DatabaseLayer ["Data Storage (MySQL)"]
+        DBStore[("Database: jobstreet_quick_apply<br/>Tables: users, candidate_profiles,<br/>resumes, skills, work_experiences,<br/>portfolio_projects, education, certs")]
     end
 
-    CE -- "HTTP GET /api/health<br/>(Host permissions)" --> API
-    DB -- "HTTP GET /api/health<br/>(CORS preflight + GET)" --> API
-    API -- "PDO connection (utf8mb4)" --> DBStore
+    DB -- "Upload PDF / Review Draft / Confirm Profile" --> RC
+    DB -- "Fetch / Edit Candidate Profile" --> CPC
+    CE -- "Query Match Scoring & Preferences" --> CPC
+    RC -- "Save PDF outside web root" --> Storage
+    RC -- "Sync Confirmed Profile & Retain Versions" --> DBStore
+    CPC -- "CRUD Operations" --> DBStore
 ```
 
 ---
 
-## 2. Application Boundaries & Responsibilities
+## 2. Resume Ingestion & Review Workflow (Phase 2)
 
-### A. Chrome Extension (`extension/`)
-- **Technology Stack:** Chrome Extension Manifest V3, React 18, TypeScript, Vite.
-- **Entry Points:**
-  - `popup/`: UI popup that allows the user to monitor connectivity, configure automation rules, and trigger actions.
-  - `background/`: Persistent service worker handling background messages and orchestration.
-  - `content/`: Content scripts injected strictly into JobStreet pages (`https://www.jobstreet.com.ph/*`, `https://*.jobstreet.com/*`).
-- **Security Boundaries:**
-  - Minimum necessary permissions (`storage` only; no full browser history or invasive permissions).
-  - Explicit `host_permissions` for the local Laravel API (`http://127.0.0.1:8000/*`).
-  - No database credentials or private API keys stored in client bundles.
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Applicant (User)
+    participant UI as Dashboard UI (/resumes)
+    participant API as Laravel REST API (/api/resumes)
+    participant Parser as PdfParserService
+    participant Extractor as StructuredExtractor
+    participant DB as MySQL Database
 
-### B. Web Dashboard (`dashboard/`)
-- **Technology Stack:** Next.js (App Router), React 19, TypeScript, Tailwind CSS.
-- **Responsibilities:**
-  - Administrative console to manage resumes, matched job listings, historical logs, and scoring weights (future phases).
-  - In Phase 1, acts as the primary health and connectivity monitor for the backend.
-- **Security Boundaries:**
-  - Strict separation of public environment variables (`NEXT_PUBLIC_API_BASE_URL`) from private server variables.
-  - No database credentials exposed to client-side components.
+    User->>UI: Selects & uploads PDF resume
+    UI->>API: POST /api/resumes (multipart/form-data)
+    API->>API: Validate file size (<= 5MB) & magic bytes (%PDF-)
+    API->>Parser: extractText(filePath)
+    alt PDF is scanned or image-only
+        Parser-->>API: throws ScannedPdfException
+        API-->>UI: HTTP 422: OCR required (unsupported)
+    else PDF is encrypted
+        Parser-->>API: throws EncryptedPdfException
+        API-->>UI: HTTP 422: Encrypted PDF rejected
+    else Valid text PDF
+        Parser-->>Extractor: extract(normalizedText)
+        Extractor-->>API: Proposed profile draft
+        API->>DB: Store resume record (is_active = false, status = parsed)
+        API-->>UI: HTTP 201: Proposed draft returned
+        UI->>User: Displays interactive Review Interface (/resumes/:id/review)
+        User->>UI: Reviews facts, edits classifications, adds/removes skills
+        User->>UI: Clicks "Confirm & Save Profile"
+        UI->>API: POST /api/resumes/:id/confirm
+        Note over API,DB: DB::transaction
+        API->>DB: Update candidate_profiles table
+        API->>DB: Sync categorized skills & candidate_skills
+        API->>DB: Upsert work_experiences & portfolio_projects
+        API->>DB: Upsert education & certifications
+        API->>DB: Mark old resumes is_active = false
+        API->>DB: Mark current resume is_active = true, status = confirmed
+        API-->>UI: HTTP 200: Profile confirmed and activated
+        UI-->>User: Displays updated Candidate Profile (/profile)
+    end
+```
 
-### C. Backend API (`backend/`)
-- **Technology Stack:** Laravel 11.x, PHP 8.3, MySQL Driver.
-- **Responsibilities:**
-  - Central REST API serving both the Chrome Extension and Dashboard.
-  - Input validation, business logic, health checks, and database migrations.
-  - Consistent JSON response structures:
-    ```json
-    {
-      "status": "ok",
-      "service": "jobstreet-quick-apply-api"
+---
+
+## 3. Candidate Profile Data Model (Normalized Schema)
+
+```mermaid
+erDiagram
+    users ||--o{ candidate_profiles : "owns"
+    users ||--o{ resumes : "uploads"
+    candidate_profiles ||--o{ candidate_skills : "has"
+    skills ||--o{ candidate_skills : "grouped in"
+    candidate_profiles ||--o{ work_experiences : "has"
+    candidate_profiles ||--o{ portfolio_projects : "has"
+    candidate_profiles ||--o{ education_records : "has"
+    candidate_profiles ||--o{ certifications : "has"
+    resumes ||--o{ work_experiences : "source provenance"
+    resumes ||--o{ portfolio_projects : "source provenance"
+
+    candidate_profiles {
+        bigint id PK
+        bigint user_id FK
+        string full_name
+        string email
+        string phone
+        string location
+        string headline
+        text summary
     }
-    ```
-- **Security Boundaries:**
-  - Safe error handling: no stack traces or credentials returned in production/public responses.
-  - Dedicated database health checks that verify PDO connection without disclosing hostnames or user passwords.
+
+    resumes {
+        bigint id PK
+        bigint user_id FK
+        string file_path
+        string original_filename
+        bigint file_size
+        string mime_type
+        string content_hash
+        boolean is_active
+        string processing_status
+        longtext parsed_data
+        longtext raw_text
+    }
+
+    skills {
+        bigint id PK
+        string name UK
+        string display_name
+        string category
+    }
+
+    work_experiences {
+        bigint id PK
+        bigint candidate_profile_id FK
+        bigint resume_id FK
+        string company_name
+        string job_title
+        string classification
+        boolean is_current
+        string start_date
+        string end_date
+        text responsibilities
+        json technologies_used
+        string review_status
+    }
+
+    portfolio_projects {
+        bigint id PK
+        bigint candidate_profile_id FK
+        bigint resume_id FK
+        string name
+        text description
+        json technologies_used
+        string project_url
+        string repository_url
+        string category
+        string review_status
+    }
+```
 
 ---
 
-## 3. Network Topology & Development Ports
+## 4. Key Security & Privacy Safeguards
 
-| Component | Protocol | Host / Origin | Port | Access Rules |
-| :--- | :--- | :--- | :--- | :--- |
-| **Laravel API** | HTTP | `http://127.0.0.1` | `8000` | Accepts requests from `localhost:3000` and Chrome Extension |
-| **Next.js Dashboard** | HTTP | `http://localhost` | `3000` | Browser front-end |
-| **Chrome Extension** | chrome-extension:// | N/A | N/A | Injected into JobStreet domains & popup |
-| **MySQL / MariaDB** | MySQL Protocol | `127.0.0.1` | `3306` | Accessible only to backend local process |
-
----
-
-## 4. CORS and Permission Matrix
-
-- **Laravel CORS Configuration (`backend/config/cors.php`):**
-  - Routes protected: `api/*`, `sanctum/csrf-cookie`
-  - Allowed Origins: `*` (or explicit `http://localhost:3000` and `chrome-extension://*`)
-  - Allowed Methods: `GET, POST, PUT, PATCH, DELETE, OPTIONS`
-  - Allowed Headers: `*`
-- **Chrome Extension Manifest V3 Permissions (`extension/public/manifest.json`):**
-  - `host_permissions`: `["http://127.0.0.1:8000/*", "http://localhost:8000/*"]`
-  - `permissions`: `["storage"]`
-
----
-
-## 5. Environment Variable Ownership
-
-| Variable | Scope | Location | Sensitivity |
-| :--- | :--- | :--- | :--- |
-| `DB_PASSWORD`, `DB_USERNAME` | Backend only | `backend/.env` | Secret (ignored in Git) |
-| `APP_KEY` | Backend only | `backend/.env` | Secret (ignored in Git) |
-| `NEXT_PUBLIC_API_BASE_URL` | Dashboard (Browser & Server) | `dashboard/.env.local` | Public URL |
-| `INTERNAL_API_BASE_URL` | Dashboard (Server-only) | `dashboard/.env.local` | Internal URL |
-| `VITE_API_BASE_URL` | Extension build | `extension/.env` | Public URL |
+1. **Storage Isolation:** Uploaded resumes are placed in `storage/app/resumes/{user_id}/{sha256}.pdf` outside the public web root. Direct HTTP access to raw files is blocked.
+2. **Strict Validation:** File extensions, MIME types, and binary file signatures (`%PDF-`) are checked on every upload.
+3. **No External AI Leakage:** Parsing is performed completely locally using deterministic PHP lexicons and regular expressions. No candidate resumes or personal data are transmitted to external AI APIs.
+4. **Application History Preservation:** Replacing an active resume does not delete prior resume records. Historical resumes retain their processing status and provenance foreign keys.
+5. **Multi-Record Atomicity:** The confirmation action wraps profile updates, skill syncing, experience persistence, and resume status toggling in a `DB::transaction`. If any operation fails, the transaction rolls back cleanly without data corruption.

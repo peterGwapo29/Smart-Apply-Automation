@@ -28,8 +28,22 @@ Ensure the following extensions are enabled in your `php.ini`:
 Smart Apply Automation/
 ├── extension/          # Chrome Extension (Manifest V3, React 18, TypeScript, Vite)
 ├── dashboard/          # Web Dashboard (Next.js 16/React 19, TypeScript, Tailwind CSS)
+│   ├── app/
+│   │   ├── resumes/            # Resume upload & version management
+│   │   │   └── [id]/review/    # Interactive extracted profile review interface
+│   │   ├── profile/            # Structured candidate profile view & editor
+│   │   ├── layout.tsx          # Navigation header
+│   │   └── page.tsx            # Overview & health status
 ├── backend/            # REST API (Laravel 11, PHP 8.3, MySQL)
+│   ├── app/
+│   │   ├── Exceptions/         # ScannedPdfException, EncryptedPdfException
+│   │   ├── Http/Controllers/   # ResumeController, CandidateProfileController, AuthController
+│   │   ├── Models/             # User, CandidateProfile, Resume, Skill, WorkExperience, etc.
+│   │   └── Services/           # PdfParserService, StructuredResumeExtractor
+│   ├── database/migrations/    # 8 normalized candidate profile migrations
 ├── docs/               # Technical and setup documentation
+│   ├── setup.md
+│   └── architecture.md
 ├── .gitignore          # Root ignore rules
 ├── README.md           # Project readme
 └── .env.example        # Monorepo environment variable template
@@ -37,7 +51,7 @@ Smart Apply Automation/
 
 ---
 
-## 3. Database Creation & Configuration
+## 3. Database Creation & Migrations
 
 The application uses a dedicated database named `jobstreet_quick_apply`.
 
@@ -47,148 +61,107 @@ Using MySQL / MariaDB CLI:
 CREATE DATABASE IF NOT EXISTS `jobstreet_quick_apply` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
-Or via PowerShell:
-```powershell
-& "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe" -u root -e "CREATE DATABASE IF NOT EXISTS jobstreet_quick_apply CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-```
-
----
-
-## 4. Environment Variables Configuration
-
-Copy the example environment files for each project:
-
-### A. Backend (`backend/.env`)
-```bash
-cp backend/.env.example backend/.env
-```
-Ensure the database credentials match your local MySQL configuration:
-```env
-APP_NAME="JobStreet Quick Apply"
-APP_ENV=local
-APP_DEBUG=true
-APP_URL=http://127.0.0.1:8000
-
-DB_CONNECTION=mysql
-DB_HOST=127.0.0.1
-DB_PORT=3306
-DB_DATABASE=jobstreet_quick_apply
-DB_USERNAME=root
-DB_PASSWORD=
-DB_COLLATION=utf8mb4_unicode_ci
-```
-Generate an application key if not present:
-```bash
-cd backend
-php artisan key:generate
-```
-
-### B. Web Dashboard (`dashboard/.env.local`)
-```bash
-cp dashboard/.env.example dashboard/.env.local
-```
-Contents:
-```env
-NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000/api
-INTERNAL_API_BASE_URL=http://127.0.0.1:8000/api
-```
-
-### C. Chrome Extension (`extension/.env`)
-```bash
-cp extension/.env.example extension/.env
-```
-Contents:
-```env
-VITE_API_BASE_URL=http://127.0.0.1:8000/api
-```
-
----
-
-## 5. Running Database Migrations
-
-Inside the `backend/` directory:
+### Running Migrations
+From the `backend/` directory:
 ```bash
 cd backend
 php artisan migrate
 ```
-To refresh the database:
+To run seeders (creates default developer user & candidate profile):
 ```bash
-php artisan migrate:fresh
+php artisan db:seed
 ```
+
+### Phase 2 Database Schema
+- `candidate_profiles`: User profile (name, email, phone, location, headline, summary).
+- `resumes`: Historical and active resume versions (file path, file size, hash, processing status, active flag).
+- `skills` & `candidate_skills`: Normalized unique skills with categorized associations (Backend, Frontend, Database, Tools, Other).
+- `work_experiences`: Classified employment, freelance, contract, and commission history.
+- `portfolio_projects`: Standalone personal, academic, and client projects (kept strictly distinct from employment).
+- `education_records` & `certifications`: Academic degrees, institutions, and credentials.
+
+---
+
+## 4. PDF Parser Service & Storage
+
+### PDF Parser Library
+- **Library:** `smalot/pdfparser` (`^2.13.1`)
+- **Type:** Pure PHP text parser (no external C-binaries like `pdftotext` or `poppler` required).
+- **Supported Formats:** Standard text-based PDF documents up to 5 MB.
+- **Unsupported Formats:**
+  - Password-protected or encrypted PDFs (rejected with `EncryptedPdfException`).
+  - Scanned / image-only PDFs without text layers (detected and rejected with `ScannedPdfException` reporting OCR is required).
+  - Malformed or non-PDF files disguised as `.pdf` (validated via magic bytes `%PDF-` and MIME type).
+
+### Storage Security
+- Resumes are stored privately in `storage/app/resumes/{user_id}/{sha256}.pdf`.
+- Files are located outside the public web root and are never directly accessible via public URLs.
+- Filenames on disk use SHA-256 hashes to prevent path traversal and arbitrary code execution.
+
+---
+
+## 5. API Endpoints (Phase 2)
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `POST` | `/api/auth/token` | Generates a Sanctum token for local developer user |
+| `GET` | `/api/auth/me` | Returns current user information |
+| `GET` | `/api/resumes` | Lists resume version history |
+| `POST` | `/api/resumes` | Uploads and extracts text from a PDF resume |
+| `GET` | `/api/resumes/{id}` | Retrieves parsed resume draft awaiting review |
+| `POST` | `/api/resumes/{id}/confirm` | Confirms reviewed profile, activates resume, and updates database |
+| `POST` | `/api/resumes/{id}/retry` | Re-parses an existing uploaded resume |
+| `GET` | `/api/candidate-profile` | Retrieves candidate profile with grouped skills, experience, projects |
+| `PUT` | `/api/candidate-profile` | Updates candidate basic contact and summary details |
+| `POST` | `/api/candidate-profile/skills` | Manually adds a technical skill |
+| `DELETE` | `/api/candidate-profile/skills/{id}` | Deletes a technical skill |
+| `POST` | `/api/candidate-profile/experiences` | Manually adds work experience |
+| `DELETE` | `/api/candidate-profile/experiences/{id}` | Deletes work experience |
+| `POST` | `/api/candidate-profile/projects` | Manually adds portfolio project |
+| `DELETE` | `/api/candidate-profile/projects/{id}` | Deletes portfolio project |
 
 ---
 
 ## 6. Starting Each Application
 
-Each application is independently runnable:
-
-### A. Backend REST API
+### A. Backend API (Laravel)
 ```bash
 cd backend
 php artisan serve --host=127.0.0.1 --port=8000
 ```
-- Endpoint: `http://127.0.0.1:8000`
-- Health check: `http://127.0.0.1:8000/api/health`
-- Database health check: `http://127.0.0.1:8000/api/health/db`
 
-### B. Web Dashboard
+### B. Web Dashboard (Next.js)
 ```bash
 cd dashboard
+npm start -- -p 3000
+# Or for development:
 npm run dev
 ```
-- Accessible at: `http://localhost:3000`
+Accessible at: `http://localhost:3000`
+- Resumes page: `http://localhost:3000/resumes`
+- Candidate Profile: `http://localhost:3000/profile`
 
 ### C. Chrome Extension
-To build the extension for production:
 ```bash
 cd extension
 npm run build
 ```
-The output directory will be created at `extension/dist/`.
+Load the `extension/dist` folder into Chrome via `chrome://extensions/` with Developer Mode enabled.
 
 ---
 
-## 7. How to Load the Extension in Google Chrome
+## 7. Running Automated Tests
 
-1. Open Google Chrome.
-2. In the address bar, navigate to: `chrome://extensions/`
-3. Enable **Developer mode** toggle in the top-right corner.
-4. Click the **Load unpacked** button in the top-left corner.
-5. In the file picker, select the `extension/dist` folder inside this project repository.
-6. The extension **JobStreet Quick Apply** will appear in your extensions list.
-7. Click the extension icon in Chrome's toolbar to open the popup and click **Test API Connection**.
-
----
-
-## 8. Running Automated Tests & Builds
-
-### Backend API Tests
+Run backend automated test suite:
 ```bash
 cd backend
 php artisan test
 ```
+All 13 unit and feature tests covering PDF validation, scanned detection, encryption handling, structured parsing, review confirmation, and history retention will execute.
 
-### Dashboard Production Build & Linting
+Run dashboard build & linting:
 ```bash
 cd dashboard
 npm run lint
 npm run build
 ```
-
-### Extension Production Build & Linting
-```bash
-cd extension
-npm run lint
-npm run build
-```
-
----
-
-## 9. Troubleshooting & Common Issues
-
-| Issue | Cause | Resolution |
-| :--- | :--- | :--- |
-| `Unknown collation: 'utf8mb4_0900_ai_ci'` | MariaDB does not support MySQL 8.0 default collation. | Set `DB_COLLATION=utf8mb4_unicode_ci` in `backend/.env`. |
-| CORS error in browser / dashboard | Missing CORS headers on Laravel routes. | Verify `backend/config/cors.php` has `'paths' => ['api/*', ...]` and `'allowed_origins' => ['*']`. |
-| Extension cannot reach `127.0.0.1:8000` | Host permissions missing in `manifest.json`. | Ensure `host_permissions` in `manifest.json` includes `"http://127.0.0.1:8000/*"`. |
-| Port 8000 or 3000 already in use | Another service is using the port. | Change `--port=8001` or `-p 3001` and update `.env` references accordingly. |

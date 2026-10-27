@@ -10,13 +10,41 @@ This repository is structured as a modular monorepo containing three core applic
 
 ---
 
+## Implemented Phases
+
+- **Phase 1: Project Foundation and Dependency Setup** (Verified)
+- **Phase 2: Resume Ingestion and Candidate Profile** (Verified)
+  - PDF resume upload with server-side signature validation and size limits (5 MB).
+  - Private storage outside public web directory.
+  - Text extraction via `smalot/pdfparser` with scanned/image-only PDF detection and encryption handling.
+  - Deterministic structured candidate extraction (skills grouped into Backend, Frontend, Database, Tools, Other).
+  - Explicit experience classification (Professional Employment, Freelance, Commission, Contract, Academic, Personal).
+  - Distinct portfolio projects recognition (e.g. *Golden Resort Booking System*, *CashiPay*, *Sumbong App* kept separate from employment history).
+  - Interactive Review & Confirmation interface with provenance tracking (`pending_review`).
+  - Resume versioning preserving application history upon replacement.
+  - Normalized MySQL schema with Eloquent relationships and transaction safety.
+
+---
+
 ## Repository Structure
 
 ```text
 Smart Apply Automation/
 ├── extension/          # Chrome Extension (Manifest V3 + React + Vite)
 ├── dashboard/          # Web Dashboard (Next.js App Router + Tailwind CSS)
+│   ├── app/
+│   │   ├── resumes/            # Resume upload & version management
+│   │   │   └── [id]/review/    # Interactive extracted profile review interface
+│   │   ├── profile/            # Structured candidate profile view & editor
+│   │   ├── layout.tsx          # Navigation header
+│   │   └── page.tsx            # Overview & health status
 ├── backend/            # REST API (Laravel 11 + MySQL)
+│   ├── app/
+│   │   ├── Exceptions/         # ScannedPdfException, EncryptedPdfException
+│   │   ├── Http/Controllers/   # ResumeController, CandidateProfileController, AuthController
+│   │   ├── Models/             # User, CandidateProfile, Resume, Skill, WorkExperience, etc.
+│   │   └── Services/           # PdfParserService, StructuredResumeExtractor
+│   ├── database/migrations/    # 8 normalized candidate profile migrations
 ├── docs/               # Architecture & Setup guides
 │   ├── setup.md
 │   └── architecture.md
@@ -37,7 +65,6 @@ Smart Apply Automation/
 - **Google Chrome:** For loading the unpacked extension
 
 ### 2. Database Setup
-Create the dedicated development database:
 ```sql
 CREATE DATABASE IF NOT EXISTS `jobstreet_quick_apply` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
@@ -45,26 +72,28 @@ CREATE DATABASE IF NOT EXISTS `jobstreet_quick_apply` CHARACTER SET utf8mb4 COLL
 ### 3. Backend Setup
 ```bash
 cd backend
-cp .env.example .env
-php artisan key:generate
+composer install
 php artisan migrate
+php artisan db:seed
 php artisan serve --port=8000
 ```
-Health endpoint: `http://127.0.0.1:8000/api/health`
+- Health endpoint: `http://127.0.0.1:8000/api/health`
+- Candidate profile endpoint: `http://127.0.0.1:8000/api/candidate-profile`
 
 ### 4. Web Dashboard Setup
 ```bash
 cd dashboard
-cp .env.example .env.local
 npm install
-npm run dev
+npm run build
+npm start -- -p 3000
+# or development: npm run dev
 ```
-Dashboard interface: `http://localhost:3000`
+- Resumes upload: `http://localhost:3000/resumes`
+- Candidate profile: `http://localhost:3000/profile`
 
 ### 5. Chrome Extension Setup
 ```bash
 cd extension
-cp .env.example .env
 npm install
 npm run build
 ```
@@ -75,8 +104,3 @@ Load the `extension/dist` folder into Chrome via `chrome://extensions/` with Dev
 ## Detailed Documentation
 - [Environment Setup & Installation Guide](file:///c:/petergwapo/Smart%20Apply%20Automation/docs/setup.md)
 - [System Architecture & Boundaries](file:///c:/petergwapo/Smart%20Apply%20Automation/docs/architecture.md)
-
----
-
-## Phase 1 Status
-Phase 1 (Project Foundation and Dependency Setup) has been configured, built, and verified.
